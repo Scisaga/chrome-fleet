@@ -7,6 +7,7 @@ RUN npm ci --ignore-scripts --workspace @chrome-fleet/browser-agent --include-wo
  && npm run build --workspace @chrome-fleet/browser-agent
 
 FROM node:24.22.0-bookworm-slim
+LABEL org.opencontainers.image.licenses="Apache-2.0" org.opencontainers.image.source="https://github.com/Scisaga/chrome-fleet"
 ARG TARGETARCH
 ARG CHROME_VERSION=155.0.8059.79
 ARG CHROME_DISTRIBUTION=google
@@ -33,6 +34,7 @@ RUN chmod 0755 /usr/local/bin/fleet-install-chrome \
  && chmod 0700 /state /state/chrome /state/keyrings /state/downloads
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 XDG_CONFIG_HOME=/state/config
 WORKDIR /app
+COPY --from=agent-build /build/LICENSE /build/NOTICE /app/
 COPY --from=agent-build /build/node_modules /app/node_modules
 COPY --from=agent-build /build/apps/browser-agent/dist /app/apps/browser-agent/dist
 COPY --from=agent-build /build/apps/browser-agent/package.json /app/apps/browser-agent/package.json

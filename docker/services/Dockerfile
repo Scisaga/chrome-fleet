@@ -7,7 +7,9 @@ RUN npm ci && npm run build
 
 FROM node:24.22.0-bookworm-slim AS runtime
 WORKDIR /app
+LABEL org.opencontainers.image.licenses="Apache-2.0" org.opencontainers.image.source="https://github.com/Scisaga/chrome-fleet"
 ENV NODE_ENV=production
+COPY --from=build /app/LICENSE /app/NOTICE ./
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
