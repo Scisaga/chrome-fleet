@@ -1,0 +1,52 @@
+.mcp-page { min-width: 0; width: 100%; }
+.mcp-heading-icon { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #e8e2f7; border-radius: 8px; color: #9381c7; background: #f1eefb; flex-shrink: 0; }
+.mcp-connection .panel-heading { flex-wrap: wrap; }
+.mcp-connection .panel-heading > .tag { flex-shrink: 0; margin-top: 2px; }
+.mcp-endpoint-label { display: block; color: #6e788d; font-size: 14px; margin-bottom: 6px; }
+.mcp-endpoint-controls { display: flex; align-items: center; gap: 8px; }
+.mcp-endpoint-controls > input { min-width: 0; font-family: "SFMono-Regular", Consolas, monospace; }
+.mcp-endpoint-controls > .button { flex-shrink: 0; }
+.mcp-auth-info { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; color: #8a94a5; font-size: 13px; }
+.mcp-auth-info strong { color: #687389; margin-left: 6px; font-weight: 500; }
+.mcp-auth-info > code { color: #7b6b9e; padding: 4px 8px; background: #f7f5fc; border-radius: 4px; overflow-wrap: anywhere; }
+.mcp-connection-hint { font-size: 13px; color: #8993a5; margin: 10px 0 0; line-height: 1.7; overflow-wrap: anywhere; }
+.mcp-page > .notice { margin-bottom: 20px; }
+.mcp-catalog-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.mcp-catalog-toolbar > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; }
+.mcp-catalog-toolbar h2 { margin: 0; font-size: 18px; }
+.mcp-catalog-toolbar > div > span { color: #96a0b1; font-size: 13px; }
+.mcp-search { display: flex; align-items: center; position: relative; width: 280px; max-width: 100%; }
+.mcp-search > svg { position: absolute; left: 11px; color: #a1aabd; pointer-events: none; }
+.app-shell .mcp-page .mcp-search > input { padding-left: 36px; }
+.mcp-catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; margin-bottom: 16px; }
+.mcp-catalog-column { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.app-shell .mcp-catalog-column > .panel { margin-bottom: 0; }
+.mcp-tool-group .panel-heading h2 { display: flex; align-items: center; gap: 8px; }
+.mcp-tool-group .panel-heading h2 > svg { color: #a091bf; flex-shrink: 0; }
+.mcp-group-count { margin-left: auto; font-size: 12px; color: #9785bc; background: #f3effa; border-radius: 4px; padding: 1px 6px; font-weight: 500; }
+.mcp-tool-list { list-style: none; padding: 0; margin: 0; }
+.mcp-tool-list > li { padding: 12px 0; border-top: 1px solid #eff1f6; min-width: 0; }
+.mcp-tool-list > li:first-child { padding-top: 0; border: 0; }
+.mcp-tool-list > li:last-child { padding-bottom: 0; }
+.mcp-tool-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 8px; }
+.mcp-tool-title > code { font-size: 13px; color: #5b6480; overflow-wrap: anywhere; }
+.mcp-tool-mode { margin-left: auto; flex-shrink: 0; font-size: 12px; color: #8f9aa9; background: #f3f5f8; padding: 2px 6px; border-radius: 4px; }
+.mcp-tool-mode.automation { color: #8e78b2; background: #f4effa; }
+.mcp-tool-mode.conditional { color: #ab8a55; background: #fcf6ea; }
+.mcp-tool-list p { margin: 5px 0 4px; color: #7e899e; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.mcp-tool-scope { display: inline-flex; align-items: center; gap: 6px; color: #9aa3b2; font-size: 12px; }
+.mcp-tool-scope code { color: #919aab; }
+.app-shell .mcp-usage p { font-size: 14px; line-height: 1.75; color: #8590a3; margin: 0 0 10px; overflow-wrap: anywhere; }
+.app-shell .mcp-usage p:last-child { margin-bottom: 0; }
+.mcp-usage code { color: #7c6c9a; }
+.mcp-empty { text-align: center; color: #95a0b1; padding-block: 30px; }
+.mcp-empty p { margin: 10px 0 14px; }
+@media (max-width: 1100px) { .mcp-catalog-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 570px) {
+  .mcp-catalog-toolbar { align-items: stretch; flex-direction: column; }
+  .mcp-search { width: 100%; }
+  .mcp-heading-icon { width: 40px; height: 40px; }
+  .mcp-auth-info { gap: 8px; }
+  .mcp-auth-info > code { width: 100%; }
+}
+@media (max-width: 390px) { .mcp-endpoint-controls { flex-wrap: wrap; } .mcp-endpoint-controls > input { flex: 1 1 100%; } }

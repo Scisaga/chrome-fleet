@@ -1,0 +1,14 @@
+[Unit]
+Description=Chrome Fleet browser network isolation
+Requires=docker.service
+After=docker.service
+Before=chrome-fleet.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/chrome-fleet
+ExecStart=/opt/chrome-fleet/scripts/fleet firewall
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+node_modules
+**/dist
+.tools
+.git
+.env
+runtime
+secrets
+*.sqlite*
+account.txt
+accounts.txt
+**/account.txt
+**/accounts.txt

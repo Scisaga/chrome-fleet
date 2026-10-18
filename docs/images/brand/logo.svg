@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Chrome Fleet</title>
+  <desc id="desc">Chrome Fleet 的紫色浏览器图标，与管理界面中的项目标志一致。</desc>
+  <rect x="2" y="2" width="124" height="124" rx="26" fill="#F0ECFC" stroke="#E1DAF8" stroke-width="2"/>
+  <g transform="translate(26 26) scale(3.1666667)" stroke="#7160D3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M21.17 8H12M3.95 6.06 8.54 14M10.88 21.94 15.46 14"/>
+  </g>
+</svg>

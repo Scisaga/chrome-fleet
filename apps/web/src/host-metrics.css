@@ -1,0 +1,18 @@
+.profile-list-heading { flex-wrap: wrap; }
+.host-metrics { display: grid; grid-template-columns: auto minmax(64px, auto) minmax(145px, auto); align-items: center; gap: 20px; min-width: 0; margin-left: auto; padding: 10px 16px; background: #fff; border: 1px solid #e9edf5; border-radius: 8px; }
+.host-metrics-heading { display: grid; gap: 5px; padding-right: 16px; border-right: 1px solid #edf0f6; color: #7f8aa0; font-size: 13px; }
+.host-metrics small { color: #9ba5b6; font-size: 12px; line-height: 1.5; white-space: nowrap; }
+.host-metric > small { white-space: normal; }
+.host-metric { display: grid; gap: 3px; min-width: 0; font-variant-numeric: tabular-nums; }
+.host-metric > span { display: flex; align-items: center; gap: 6px; color: #929bad; font-size: 12px; }
+.host-metric svg { color: #a299bc; flex-shrink: 0; }
+.host-metric strong { font-size: 18px; line-height: 1.5; color: #65718a; font-weight: 600; }
+.host-metrics[data-host-metrics-state="stale"] strong, .host-metrics[data-host-metrics-state="unavailable"] strong { font-size: 14px; color: #ad966d; }
+@media (max-width: 760px) {
+  .host-metrics { width: 100%; grid-template-columns: auto minmax(50px, 1fr) minmax(0, 1.7fr); gap: 12px; padding: 12px; }
+  .host-metrics-heading { padding-right: 12px; }
+}
+@media (max-width: 390px) {
+  .host-metrics { gap: 10px; }
+  .host-metrics-heading { padding-right: 10px; }
+}

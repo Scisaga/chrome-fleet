@@ -1,0 +1,23 @@
+.resource-metrics {
+  min-width: 0;
+  border: 1px solid #edf0f6;
+  border-radius: 7px;
+  background: #fafbfe;
+  padding: 12px;
+}
+.resource-metrics-card { margin: 0 0 18px; }
+.resource-metrics-detail { margin: 0 0 16px; }
+.resource-metrics-values { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: 14px; }
+.resource-metric { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.resource-metric > span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #929bad; }
+.resource-metric svg { flex-shrink: 0; color: #a299bc; }
+.resource-metric strong { font-size: 14px; font-weight: 500; color: #65718a; line-height: 1.6; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.resource-metrics-caption, .resource-metrics-note { font-size: 12px; line-height: 1.7; color: #9ba5b6; margin: 9px 0 0; overflow-wrap: anywhere; }
+.resource-metrics-note { margin-top: 5px; }
+.resource-metrics[data-metrics-state="stale"] .resource-metric strong,
+.resource-metrics[data-metrics-state="unavailable"] .resource-metric strong { color: #ad966d; }
+.resource-metrics[data-metrics-state="stopped"] .resource-metric strong { color: #9ba5b6; }
+@media (max-width: 470px) {
+  .resource-metrics { padding: 11px 12px; }
+  .resource-metrics-values { gap: 12px; }
+}

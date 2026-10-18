@@ -1,0 +1,229 @@
+.browser-mode-settings {
+  display: grid;
+  gap: 12px;
+}
+
+.browser-mode-settings > .browser-mode-settings__heading,
+.browser-mode-settings > .notice {
+  margin: 0;
+}
+
+.browser-mode-settings__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) auto;
+  align-items: end;
+  justify-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.browser-mode-settings__controls > .field {
+  margin: 0;
+}
+
+.browser-mode-settings__controls > .button {
+  white-space: nowrap;
+}
+
+.browser-mode-settings__hint {
+  margin: 0;
+  color: #8a94a6;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.vnc-google-binding-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.vnc-google-binding-panel > .vnc-google-binding-panel__heading {
+  margin: 0;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.vnc-google-binding-panel__heading .google-account-panel-title {
+  flex: 1 1 280px;
+  min-width: 0;
+  gap: 10px;
+}
+
+.vnc-google-binding-panel__heading .google-account-panel-title > div {
+  min-width: 0;
+}
+
+.vnc-google-binding-panel__heading .google-account-panel-title p {
+  max-width: none;
+  line-height: 1.7;
+}
+
+.vnc-google-binding-panel__heading > .button {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.vnc-google-binding-panel > .google-login-progress {
+  margin: 0;
+}
+
+.account-login-credentials {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+.account-login-email,
+.account-login-credentials > .account-password {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.account-login-credentials > .account-password {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.account-login-email > label,
+.account-login-credentials .account-password-label {
+  grid-column: 1 / -1;
+  color: #7e899e;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell .account-login-credentials input[readonly] {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+}
+
+.app-shell .account-login-credentials .account-password > input[readonly] {
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  font-variant-ligatures: none;
+}
+
+.app-shell .account-login-credentials .button {
+  height: 40px;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.google-login-progress-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px 16px;
+  min-width: 0;
+}
+
+.google-login-progress-summary.has-actions {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.google-login-progress-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.google-login-progress-copy > .google-login-progress-title {
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.google-login-progress-copy .google-login-progress-title > svg {
+  flex-shrink: 0;
+}
+
+.google-login-progress-copy .google-login-progress-title strong {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.google-login-progress-copy > p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.google-login-progress-copy > .google-login-identities {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.google-login-progress-actions > .button {
+  white-space: nowrap;
+}
+
+.vnc-google-binding-panel > .vnc-google-binding-panel__actions {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+}
+
+.vnc-google-binding-panel__actions > .google-login-button {
+  margin: 0;
+}
+
+.vnc-google-binding-panel > .vnc-google-binding-panel__editor {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vnc-google-binding-panel__editor .field,
+.vnc-google-binding-panel__editor > .notice {
+  margin-bottom: 0;
+}
+
+.vnc-google-binding-panel__editor > .form-actions {
+  flex-wrap: wrap;
+  margin-top: 0;
+  padding-top: 12px;
+}
+
+.vnc-google-binding-panel > .google-login-guidance {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+@media (max-width: 560px) {
+  .account-login-credentials {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .browser-mode-settings__controls {
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+    gap: 10px;
+  }
+
+  .browser-mode-settings__controls > .button {
+    justify-self: start;
+  }
+
+  .google-login-progress-summary.has-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .google-login-progress-actions {
+    justify-self: start;
+  }
+
+  .vnc-google-binding-panel__heading .google-account-panel-title {
+    flex-basis: 100%;
+  }
+}

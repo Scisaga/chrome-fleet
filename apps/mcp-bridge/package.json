@@ -1,0 +1,31 @@
+{
+  "name": "@chrome-fleet/mcp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "chrome-fleet-mcp": "./dist/stdio.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/stdio.js",
+    "start:http": "node dist/http.js",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@chrome-fleet/sdk": "0.1.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "fastify": "5.12.7",
+    "zod": "3.25.76"
+  }
+}

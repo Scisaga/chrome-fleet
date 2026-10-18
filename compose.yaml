@@ -1,0 +1,111 @@
+name: chrome-fleet
+services:
+  control-plane:
+    build:
+      context: .
+      dockerfile: docker/services/Dockerfile
+      target: control-plane
+    image: chrome-fleet/control-plane:0.1.0
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports:
+      - "${FLEET_BIND_ADDRESS:-127.0.0.1}:${FLEET_PORT:-8080}:8080"
+    environment:
+      NODE_ENV: production
+      FLEET_HOST: 0.0.0.0
+      FLEET_PORT: 8080
+      FLEET_PUBLIC_URL: "${FLEET_PUBLIC_URL:-http://127.0.0.1:8080}"
+      FLEET_ALLOWED_ORIGINS: "${FLEET_ALLOWED_ORIGINS:-}"
+      FLEET_COOKIE_SECURE: "${FLEET_COOKIE_SECURE:-false}"
+      FLEET_DATA_ROOT: "${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}"
+      FLEET_MASTER_KEY_FILE: /run/secrets/master.key
+      FLEET_ADMIN_TOKEN_FILE: /run/secrets/admin-token
+      RUNNER_TOKEN_FILE: /run/secrets/runner-token
+      RUNNER_URL: http://runner:8091
+      FLEET_BROWSER_IMAGE: "chrome-fleet/browser:google-${CHROME_VERSION:-155.0.8059.79}"
+      FLEET_WEB_ROOT: /app/apps/web/dist
+      FLEET_MAX_CONCURRENCY: "${FLEET_MAX_CONCURRENCY:-3}"
+    volumes:
+      - "${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}:${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}"
+      - "${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}/secrets:/run/secrets:ro"
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      control:
+        ipv4_address: 172.30.0.2
+      service-egress: {}
+    depends_on:
+      runner:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health',{headers:{host:new URL(process.env.FLEET_PUBLIC_URL).host}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+  runner:
+    build:
+      context: .
+      dockerfile: docker/services/Dockerfile
+      target: runner
+    image: chrome-fleet/runner:0.1.0
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATA_ROOT: "${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}"
+      RUNNER_TOKEN_FILE: /run/secrets/runner-token
+      RUNNER_HOST: 0.0.0.0
+      FLEET_CONTROL_NETWORK: chrome-fleet-control
+      FLEET_CONTROL_SUBNET: 172.30.0
+      BUILD_CONTEXT: /build-context
+      FLEET_ALLOWED_PRIVATE_HOSTS: "${FLEET_ALLOWED_PRIVATE_HOSTS:-}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}:${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}"
+      - "${FLEET_DATA_ROOT:-/var/lib/chrome-fleet}/secrets/runner-token:/run/secrets/runner-token:ro"
+      - /run/chrome-fleet:/run/chrome-fleet:ro
+      - .:/build-context:ro
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      control:
+        ipv4_address: 172.30.0.3
+      service-egress: {}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8091/health',{headers:{Authorization:'Bearer '+require('fs').readFileSync('/run/secrets/runner-token','utf8').trim()}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  browser-image:
+    profiles: [build]
+    image: "chrome-fleet/browser:google-${CHROME_VERSION:-155.0.8059.79}"
+    build:
+      context: .
+      dockerfile: docker/browser/Dockerfile
+      args:
+        CHROME_VERSION: "${CHROME_VERSION:-155.0.8059.79}"
+        CHROME_DISTRIBUTION: google
+networks:
+  control:
+    name: chrome-fleet-control
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  service-egress:
+    name: chrome-fleet-service-egress
