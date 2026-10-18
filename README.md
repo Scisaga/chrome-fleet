@@ -3,11 +3,25 @@
 </p>
 
 <p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-8B5CF6?style=flat-square&amp;logo=apache&amp;logoColor=white" alt="License: Apache 2.0" /></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-24_LTS-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 24 LTS" /></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript 5.9" /></a>
+  <a href="apps/web/package.json"><img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&amp;logo=react&amp;logoColor=white" alt="React 19" /></a>
+  <br />
+  <a href="apps/browser-agent/package.json"><img src="https://img.shields.io/badge/Playwright-1.64-2EAD33?style=flat-square" alt="Playwright 1.64" /></a>
+  <a href="compose.yaml"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker Compose" /></a>
+  <a href="docs/mcp.md"><img src="https://img.shields.io/badge/MCP-Streamable_HTTP-8B5CF6?style=flat-square&amp;logo=modelcontextprotocol&amp;logoColor=white" alt="MCP Streamable HTTP" /></a>
+  <a href="#部署与快速开始"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat-square&amp;logo=linux&amp;logoColor=black" alt="Linux x86_64" /></a>
+</p>
+
+<p align="center">
   <a href="#产品概览">产品概览</a> ·
   <a href="#界面预览">界面预览</a> ·
   <a href="#部署与快速开始">部署与快速开始</a> ·
   <a href="#通过-mcp-让-ai-操作浏览器">MCP 用法</a> ·
-  <a href="#更多文档">更多文档</a>
+  <a href="#技术栈与架构">技术栈</a> ·
+  <a href="#更多文档">更多文档</a> ·
+  <a href="#许可证与第三方声明">License</a>
 </p>
 
 **Chrome Fleet 是一个自托管的浏览器工作台。** 为不同账号保留独立的 Chrome 环境，在中文界面中管理账号、代理、远程桌面和任务；完成网站登录后，通过 MCP 或 REST 让 AI 在指定浏览器里继续操作。
@@ -181,6 +195,31 @@ MCP 已集成在管理服务中，**无需再启动 MCP 容器或本地进程**�
 
 当前 MCP 使用适用于本机及显式授权 LAN / WireGuard 的 Bearer 模式，尚未提供完整公网 OAuth。完整工具表、客户端代码与可选 stdio 接入见 [MCP 使用文档](docs/mcp.md)。
 
+## 技术栈与架构
+
+面向 Linux 单机自托管，管理界面、REST 和 MCP 共用账号权限与持久任务队列。
+
+| 层 | 技术 | 职责 |
+| --- | --- | --- |
+| 管理界面 | React 19 · Vite 7 · TypeScript 5.9 | 账号、实例、远程桌面和任务管理 |
+| 控制服务 | Node.js 24 LTS · Fastify 5 | 身份认证、实例授权、任务编排与更新调度 |
+| AI 接入 | MCP SDK 1.32 · Streamable HTTP / stdio | 向 AI 提供 35 个工具，复用 REST 的权限和队列 |
+| 浏览器与桌面 | Chrome · Playwright 1.64 · noVNC | 普通 Chrome 人工桌面与自动化模式切换 |
+| 持久化 | SQLite WAL · AES-256-GCM | 保存任务状态、账号目录及加密凭据与备份 |
+| 运行与隔离 | Docker Compose · Linux x86_64 | 实例生命周期、独立用户目录与网络规则 |
+
+```mermaid
+flowchart LR
+  Web[Web / REST] --> Control[Control Plane]
+  AI[AI / MCP] --> Control
+  Control -->|生命周期| Runner
+  Control -->|网页任务与桌面| Agent[Browser Agent]
+  Runner --> Chrome[独立 Chrome 实例]
+  Agent --> Chrome
+```
+
+组件关系、固定依赖版本与数据布局见[架构与版本](docs/architecture.md)。
+
 ## 更多文档
 
 | 文档 | 内容 |
@@ -218,3 +257,14 @@ node scripts/capture-readme-screenshots.mjs
 原始需求见 [BUILD_PROMPT.md](BUILD_PROMPT.md)。
 
 </details>
+
+## 许可证与第三方声明
+
+本项目采用 [Apache License 2.0](LICENSE)，版权声明见 [NOTICE](NOTICE)。允许商业使用、修改与分发，并包含明确的专利授权条款；再分发时需保留许可证及适用声明，并标注修改。
+
+第三方依赖和素材保留各自许可证及版权声明：
+
+- [MCP Logo：MIT 许可及来源](apps/web/public/notices/mcp-logo.txt)。
+- [DejaVu Sans Mono 字体：Bitstream Vera / DejaVu 许可](apps/web/public/fonts/dejavu-sans-mono.LICENSE.txt)。
+
+Google Chrome、noVNC 和其他第三方组件的许可由各自项目提供。
