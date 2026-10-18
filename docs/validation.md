@@ -2,6 +2,20 @@
 
 验证日期：2026 年 10 月 17 日（Asia/Shanghai）。环境为 Linux x86_64、Docker Engine 29.4.2、Compose 5.1.3。自动化测试使用合成账号，未读取宿主机既有浏览器数据；当前受管实例另按用户明确授权尝试 Google 分步填写，结果见下文，未提交真实账号密码。
 
+## Chrome Fleet Skill（2026 年 10 月 18 日）
+
+新增独立的 Codex / Claude Code Skill，包含安装、部署接入、诊断、stdio 桥接和桌面转发辅助脚本。Python 3.10+，运行时仅依赖标准库；不修改业务 HTTP API 或 MCP 工具协议。
+
+本轮在 Linux 上以 root 和普通用户分别通过 61 项隔离测试，覆盖独立安装、注册幂等及同名冲突、SSH 引用、stdio/EOF/SIGTERM、MCP 初始化与权限错误、CRLF 处理、Docker 环境隔离、APT 模拟、网络及目录冲突、部署重试与互斥锁。主机和客户端行为使用临时目录及合成命令验证，没有执行真实 APT、Docker、systemd 部署操作或读取生产凭据。Skill Creator 结构校验通过。
+
+另使用真实 Codex CLI，在临时 HOME 和 CODEX_HOME 中验证用户级注册、配置读取及重复注册；没有启动 MCP 或修改当前用户配置。账号选择、VNC 模式、人工接管和结果未知场景完成独立文档走查。
+
+```bash
+python3 -W error::ResourceWarning -m unittest discover -s skills/chrome-fleet/tests -v
+```
+
+已配置 Linux、macOS、Windows 的 Python 3.10 / 3.13 CI；平台不适用的主机测试明确跳过。CI 配置尚不代表对应平台已运行通过。本轮未完成原生 Windows/macOS 客户端实机、真实 Claude Code 注册、隔离 Ubuntu/Debian 首次安装及真实 SSH/Docker 断连验收。这些验收需专用环境，不能用模拟测试或既有浏览器验证记录代替。新部署脚本默认执行 `doctor --runtime` 的临时空白 Chrome 检查，已有部署复用不执行该检查。
+
 ## 目录绑定、人工确认入口与归档清理
 
 2026年10月17日用户通过VNC完成Google网站登录，并提供Google Account页面截图及登录成功陈述。该用户证据与平台的人工确认记录、自动化验收分开；本轮不读取真实Cookies/网页、不代用户点击确认，不停止或重启已登录Chrome。

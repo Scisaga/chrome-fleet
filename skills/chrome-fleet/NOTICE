@@ -1,0 +1,13 @@
+Chrome Fleet
+Copyright 2026 Scisaga
+
+Licensed under the Apache License, Version 2.0.
+See LICENSE for the terms of this license.
+
+Project: https://github.com/Scisaga/chrome-fleet
+
+Third-party components and assets retain their respective licenses and
+copyright notices. Attribution notices for bundled assets are provided in:
+
+- apps/web/public/notices/mcp-logo.txt
+- apps/web/public/fonts/dejavu-sans-mono.LICENSE.txt

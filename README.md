@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/brand/hero.svg" alt="Chrome Fleet · 独立浏览器工作台" width="100%" />
+  <img src="docs/images/brand/hero.svg" alt="Chrome Fleet · 独立账号浏览器、Skill 部署接入与 MCP 自动化，支持 Codex 和 Claude Code" width="100%" />
 </p>
 
 <p align="center">
@@ -11,6 +11,7 @@
   <a href="apps/browser-agent/package.json"><img src="https://img.shields.io/badge/Playwright-1.64-2EAD33?style=flat-square" alt="Playwright 1.64" /></a>
   <a href="compose.yaml"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker Compose" /></a>
   <a href="docs/mcp.md"><img src="https://img.shields.io/badge/MCP-Streamable_HTTP-8B5CF6?style=flat-square&amp;logo=modelcontextprotocol&amp;logoColor=white" alt="MCP Streamable HTTP" /></a>
+  <a href="#安装-chrome-fleet-skill"><img src="https://img.shields.io/badge/Skill-Codex_%7C_Claude_Code-7160D3?style=flat-square" alt="Skill: Codex / Claude Code" /></a>
   <a href="#部署与快速开始"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat-square&amp;logo=linux&amp;logoColor=black" alt="Linux x86_64" /></a>
 </p>
 
@@ -18,15 +19,16 @@
   <a href="#产品概览">产品概览</a> ·
   <a href="#界面预览">界面预览</a> ·
   <a href="#部署与快速开始">部署与快速开始</a> ·
+  <a href="#安装-chrome-fleet-skill">Skill 接入</a> ·
   <a href="#通过-mcp-让-ai-操作浏览器">MCP 用法</a> ·
   <a href="#技术栈与架构">技术栈</a> ·
   <a href="#更多文档">更多文档</a> ·
   <a href="#许可证与第三方声明">License</a>
 </p>
 
-**Chrome Fleet 是一个自托管的浏览器工作台。** 为不同账号保留独立的 Chrome 环境，在中文界面中管理账号、代理、远程桌面和任务；完成网站登录后，通过 MCP 或 REST 让 AI 在指定浏览器里继续操作。
+**Chrome Fleet 是一个自托管的浏览器工作台。** 为不同账号保留独立的 Chrome 环境，在中文界面中管理账号、代理、远程桌面和任务。通过 [Chrome Fleet Skill](#安装-chrome-fleet-skill)，在 **Codex 或 Claude Code** 中部署或接入服务；完成网站登录并启用自动化后，用自然语言选择指定账号的浏览器，执行网页操作。
 
-账号资料、浏览器用户目录和备份保存在你管理的服务器上。既可以打开桌面亲自操作，也可以将已登录的实例交给自动化任务。
+账号资料、浏览器用户目录和备份保存在你管理的服务器上。既可以打开桌面亲自操作，也可以通过 MCP 或 REST 执行自动化任务，遇到登录验证时再人工接管。
 
 ## 产品概览
 
@@ -34,6 +36,7 @@
 | --- | --- |
 | 管理多个浏览器环境 | 独立 Chrome 实例、用户目录、代理和桌面密码，按需启动与空闲关闭 |
 | 方便地登录和使用账号 | 账号目录、邮箱和密码查看/复制、Google 账号绑定与人工登录确认；已确认账号直接打开桌面 |
+| 接入 AI 客户端 | Skill 引导部署或复用服务，自动配置 Codex / Claude Code 的 MCP 连接 |
 | 让 AI 操作指定账号 | MCP 按实例选择浏览器，执行导航、点击、表单填写、文本提取、截图及多步任务 |
 | 随时接手浏览器 | 新窗口或内嵌远程桌面，支持中文等 UTF-8 文本的双向剪贴板 |
 | 看清运行情况 | 宿主机与各实例的 CPU、内存用量，任务进度、执行结果和历史记录 |
@@ -120,7 +123,7 @@ sudo ./scripts/fleet doctor
 
 ## 通过 MCP 让 AI 操作浏览器
 
-MCP 已集成在管理服务中，**无需再启动 MCP 容器或本地进程**。在支持 Streamable HTTP 的客户端中填写：
+MCP 已集成在管理服务中。使用 Streamable HTTP 时，直接填写以下信息，无需额外启动 MCP 进程；下方 Skill 接入则通过 stdio 桥接同一服务，支持 SSH 远端，令牌留在服务端。
 
 | 配置项 | 填写内容 |
 | --- | --- |
@@ -195,6 +198,55 @@ MCP 已集成在管理服务中，**无需再启动 MCP 容器或本地进程**�
 
 当前 MCP 使用适用于本机及显式授权 LAN / WireGuard 的 Bearer 模式，尚未提供完整公网 OAuth。完整工具表、客户端代码与可选 stdio 接入见 [MCP 使用文档](docs/mcp.md)。
 
+## 安装 Chrome Fleet Skill
+
+[`chrome-fleet` Skill](skills/chrome-fleet/SKILL.md) 将首次部署、MCP 配置和日常账号浏览器操作放在同一工作流中。支持 **Codex 与 Claude Code**，客户端可运行在 Linux、macOS、WSL 或原生 Windows；macOS、Windows 通过 SSH 连接 Linux 服务。
+
+客户端先准备 **Python 3.10+**、对应 AI 客户端 CLI；远程使用还需 OpenSSH、已配置的 SSH 密钥和已核实的主机记录。无需在客户端安装 Node.js。
+
+从源码目录安装 Skill，选择 `codex`、`claude` 或 `both`：
+
+```bash
+python3 skills/chrome-fleet/scripts/fleet_skill.py install --client codex
+```
+
+随后用**已安装副本**接入，避免 MCP 配置依赖源码目录。Codex 本机 Linux 示例：
+
+```bash
+python3 ~/.agents/skills/chrome-fleet/scripts/fleet_skill.py setup --client codex --target local
+```
+
+Claude Code 的 SSH 远端示例，`fleet-host` 替换为你的 SSH 主机别名：
+
+```bash
+python3 skills/chrome-fleet/scripts/fleet_skill.py install --client claude
+python3 ~/.claude/skills/chrome-fleet/scripts/fleet_skill.py setup --client claude --target ssh --ssh-host fleet-host
+```
+
+原生 Windows PowerShell 在源码目录中使用 `py -3` 安装，然后运行已安装副本：
+
+```powershell
+py -3 .\skills\chrome-fleet\scripts\fleet_skill.py install --client codex
+py -3 "$HOME\.agents\skills\chrome-fleet\scripts\fleet_skill.py" setup --client codex --target ssh --ssh-host fleet-host
+```
+
+`setup` 先识别并复用已有服务。新部署支持 Ubuntu 22.04/24.04/26.04 LTS、Debian 12/13 amd64，要求 systemd、rootful Docker 和 root 或免交互 sudo；会补齐缺失依赖，使用固定服务提交，并通过临时空白 Chrome 完成运行验收。已有服务不会被初始化、升级或重启。
+
+配置自动注册到当前用户，保留其他 MCP 配置；按输出提示重新加载客户端会话后使用。Windows 与 WSL 需分别注册。连接元数据位于 `~/.chrome-fleet/skill/`，不保存 Token；SSH 接入使用服务端现有凭据，默认与管理页相同的管理员身份。
+
+接入后可以对 AI 说：
+
+> 使用 chrome-fleet，找到 sales@example.test 对应的浏览器，打开 https://example.com 并提取主标题。只操作这个账号，查询任务完成后返回结果。
+
+需要人工登录或验证码时，在同一实例的桌面完成，结束人工接管后继续原任务。管理页与 MCP 应使用相同平台凭据。查看连接或打开管理入口：
+
+```bash
+python3 ~/.agents/skills/chrome-fleet/scripts/fleet_skill.py doctor --name chrome-fleet
+python3 ~/.agents/skills/chrome-fleet/scripts/fleet_skill.py desktop --name chrome-fleet
+```
+
+`desktop` 为 SSH 目标维持前台转发；Ctrl+C 只关闭本次转发。`doctor` 默认只诊断，显式添加 `--runtime` 才创建空白验收浏览器。详细参数、人工接管与故障处理见 [Skill 安装接入](skills/chrome-fleet/references/setup.md)、[按账号操作](skills/chrome-fleet/references/usage.md)、[排错指南](skills/chrome-fleet/references/troubleshooting.md)。
+
 ## 技术栈与架构
 
 面向 Linux 单机自托管，管理界面、REST 和 MCP 共用账号权限与持久任务队列。
@@ -226,6 +278,7 @@ flowchart LR
 | --- | --- |
 | [部署与运维](docs/operations.md) | 安装、远程访问、HTTPS、代理网络、桌面剪贴板与排错 |
 | [MCP 使用文档](docs/mcp.md) | HTTP 连接、认证、工具权限、客户端代码与 stdio |
+| [Chrome Fleet Skill](skills/chrome-fleet/SKILL.md) | Codex / Claude Code 安装、自动部署接入、指定账号操作与人工接管 |
 | [REST API 与 TypeScript SDK](docs/api.md) | 接口、异步任务、幂等与代码示例 |
 | [账号登录与会话恢复](docs/session-recovery.md) | 人工登录、账号确认、Cookie、网站存储及完整快照 |
 | [架构与版本](docs/architecture.md) | 组件、数据目录、固定依赖版本及运行机制 |
@@ -244,6 +297,14 @@ npm test
 ```
 
 `npm run dev` 启动控制服务；需要先初始化运行数据并准备 Runner 与浏览器镜像。前端开发可运行 `npm run dev -w @chrome-fleet/web`。
+
+Skill 使用 Python 标准库，可单独运行隔离测试，不需要启动 Docker、连接真实账号或安装 AI 客户端：
+
+```bash
+python3 -W error::ResourceWarning -m unittest discover -s skills/chrome-fleet/tests -v
+```
+
+GitHub Actions 在 Linux、macOS、Windows 上运行客户端辅助脚本检查；真实服务部署与 Chrome 运行时验收需另在专用 Ubuntu/Debian 主机执行，不能用这些隔离测试代替。
 
 README 截图使用真实前端和独立的合成数据生成，不连接运行中的账号或浏览器：
 

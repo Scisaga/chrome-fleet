@@ -1,0 +1,3 @@
+interface:
+  display_name: "Chrome Fleet"
+  short_description: "部署接入 Chrome Fleet，并按指定账号操作浏览器与处理人工接管"
