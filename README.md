@@ -1,4 +1,8 @@
 <p align="center">
+  <strong>简体中文</strong> · <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <img src="docs/images/brand/hero.svg" alt="Chrome Fleet · 独立账号浏览器、Skill 部署接入与 MCP 自动化，支持 Codex 和 Claude Code" width="100%" />
 </p>
 
@@ -46,6 +50,29 @@
 
 *实例总览：右上角查看宿主机资源，每张卡片显示对应 Chrome 的状态、资源用量和桌面入口。*
 
+### 让智能体帮你安装
+
+在 Codex 或 Claude Code 中复制以下提示词，让智能体安装 Skill：
+
+```text
+请为当前使用的智能体安装 Chrome Fleet Skill。
+项目仓库：https://github.com/Scisaga/chrome-fleet
+Skill 目录：skills/chrome-fleet
+
+请先阅读该目录的 SKILL.md 和 references/setup.md，检查 Python 3.10+ 和当前客户端 CLI，
+使用随附的 scripts/fleet_skill.py install 安装到当前用户，并从已安装副本进行后续操作。
+完成后告诉我安装位置，以及连接 MCP 服务还需要哪些信息。
+```
+
+如需同时部署或接入服务，可在提示词末尾追加以下内容。将 `fleet-host` 替换为已配置的 SSH 主机别名；本机 Linux 部署则将目标改为「当前主机」。
+
+```text
+同时在 SSH 主机 fleet-host 上接入 Chrome Fleet：优先复用已有服务；若尚未部署，按项目说明完成首次部署。
+使用已安装的 Skill 为当前客户端注册 MCP 并验证连接，告诉我是否需要重新加载会话，并提供管理界面入口。
+```
+
+安装命令与平台要求见[安装 Chrome Fleet Skill](#安装-chrome-fleet-skill)。接入后，可以继续让智能体「使用 sales@example.test 对应的浏览器打开 https://example.com 并提取标题」。
+
 ## 界面预览
 
 以下截图由当前前端生成，使用示例账号和演示数据，密码保持遮挡。点击图片可查看原图。
@@ -58,7 +85,7 @@
 
 ### 任务中心
 
-查看任务状态、历史密度和执行记录，按时间范围定位操作，继续查看对应任务的进度与结果。
+查看任务状态、按小时汇总的任务分布和执行记录，按时间范围定位操作，继续查看对应任务的进度与结果。
 
 [![任务中心：时间密度、任务筛选与执行记录](docs/images/screenshots/task-center.png)](docs/images/screenshots/task-center.png)
 
@@ -313,7 +340,7 @@ npm run build -w @chrome-fleet/web
 node scripts/capture-readme-screenshots.mjs
 ```
 
-截图脚本需要可用的 Chromium、系统浏览器依赖及中文字体；也可通过 `FLEET_QA_CHROME` 指定 Chrome 可执行文件。生成结果位于 `docs/images/screenshots/`。
+截图脚本需要可用的 Chromium、系统浏览器依赖及中文字体；也可通过 `FLEET_QA_CHROME` 指定 Chrome 可执行文件。脚本同时生成中文截图和英文标签的文档预览，分别位于 `docs/images/screenshots/` 和其中的 `en/` 目录。当前产品管理界面仍为中文。
 
 原始需求见 [BUILD_PROMPT.md](BUILD_PROMPT.md)。
 
