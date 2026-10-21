@@ -1,4 +1,6 @@
 /** Chrome Fleet REST client. No mutating request is automatically replayed. */
+import type { Platform, PlatformInput, PlatformAccount } from '@chrome-fleet/contracts';
+export type { Platform, PlatformInput, PlatformAccount } from '@chrome-fleet/contracts';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export interface Envelope<T> { data: T; requestId: string }
 export interface Page<T> { items: T[]; total: number; nextCursor?: string | null }
@@ -19,6 +21,7 @@ export interface ProxyConfig {
 export interface BrowserProfile {
   id: string; name: string; state: ProfileState; tags?: string[];
   startupPolicy?: RuntimePolicy['startupPolicy']; archived?: boolean;
+  platformAccounts?: PlatformAccount[];
   [key: string]: unknown;
 }
 export interface CreateProfile {
@@ -120,7 +123,14 @@ export class FleetClient {
   setVncPassword(profileId: string, secretRef: string) { return this.data<Record<string, unknown>>('PUT', `/api/v1/profiles/${id(profileId)}/remote-desktop/password`, { secretRef }); }
   listAccounts(profileId: string) { return this.data<Page<Record<string, unknown>>>('GET', `/api/v1/profiles/${id(profileId)}/accounts`); }
   bindAccount(profileId: string, body: { provider: string; alias: string; expectedIdentity: string; [key: string]: unknown }) { return this.data<Record<string, unknown>>('POST', `/api/v1/profiles/${id(profileId)}/accounts`, body); }
-  checkAccounts(profileId: string, body: { accountId?: string } = {}, options?: RequestOptions) { return this.data<AcceptedJob>('POST', `/api/v1/profiles/${id(profileId)}/accounts/check`, body, options); }
+  listPlatforms(filters: Pick<Pagination, 'limit' | 'offset'> = {}) { return this.data<Page<Platform>>('GET', `/api/v1/platforms${query(filters)}`); }
+  createPlatform(body: PlatformInput, options?: RequestOptions) { return this.data<Platform>('POST', '/api/v1/platforms', body, options); }
+  updatePlatform(platformId: string, body: Partial<PlatformInput>) { return this.data<Platform>('PATCH', `/api/v1/platforms/${id(platformId)}`, body); }
+  deletePlatform(platformId: string) { return this.data<{ deleted: boolean }>('DELETE', `/api/v1/platforms/${id(platformId)}`); }
+  linkPlatform(profileId: string, platformId: string, body: { googleAccountId: string; confirmedGoogleSignup: true }, options?: RequestOptions) { return this.data<PlatformAccount>('POST', `/api/v1/profiles/${id(profileId)}/platforms/${id(platformId)}`, body, options); }
+  confirmPlatformLogin(profileId: string, platformId: string, body: { identity: string; nickname?: string; confirmedLoggedIn: true }, options?: RequestOptions) { return this.data<PlatformAccount>('POST', `/api/v1/profiles/${id(profileId)}/platforms/${id(platformId)}/confirm`, body, options); }
+  unlinkPlatform(profileId: string, platformId: string) { return this.data<{ deleted: boolean }>('DELETE', `/api/v1/profiles/${id(profileId)}/platforms/${id(platformId)}`); }
+  openPlatformLogin(profileId: string, platformId: string) { return this.data<Record<string, unknown>>('POST', `/api/v1/profiles/${id(profileId)}/platforms/${id(platformId)}/login`, {}); }
   openManualSession(profileId: string, body: { durationSeconds?: number; explicitStart?: boolean } = {}, options?: RequestOptions) { return this.data<Record<string, unknown>>('POST', `/api/v1/profiles/${id(profileId)}/manual-sessions`, body, options); }
   closeManualSession(sessionId: string) { return this.data<Record<string, unknown>>('DELETE', `/api/v1/manual-sessions/${id(sessionId)}`); }
   submitJob(body: SubmitJob, options?: RequestOptions) { return this.data<AcceptedJob>('POST', '/api/v1/jobs', body, options); }

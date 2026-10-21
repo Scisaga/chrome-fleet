@@ -11,6 +11,7 @@ import { Badge, Button, Empty, Field, Icon, Modal, Notice } from "./components";
 import "./accounts.css";
 import { browserMode, browserModeLabel, vncModeDescription } from "./browser-mode";
 import { AccountEditor, AccountPassword } from "./AccountCredentials";
+import { PlatformAccountList } from "./PlatformAccounts";
 
 interface AccountManagerProps {
   profiles: Profile[];
@@ -42,20 +43,14 @@ const profileStateLabels: Record<string, string> = {
   error: "异常，登录时尝试启动",
 };
 const authStateLabels: Record<string, string> = {
-  authenticated: "已验证登录",
-  manually_confirmed: "已人工确认登录",
-  bound_unconfirmed: "已绑定，待人工确认",
-  unknown: "登录待验证",
-  needs_login: "需要登录",
-  needs_verification: "需要人工验证",
-  unsupported: "暂不支持检测",
+  manually_confirmed: "已人工确认登录", bound_unconfirmed: "已绑定，待人工确认",
 };
 
 function associationNote(binding: AccountAssociation) {
   if (binding.archived) return "归档保留账号关联，恢复实例后可继续使用";
   if (binding.authState === "manually_confirmed")
     return `人工确认 ${date(binding.lastConfirmedAt || binding.boundAt || binding.lastCheckedAt)} · 非服务器验证`;
-  if (!binding.vnc && binding.lastCheckedAt) return `最近检测 ${date(binding.lastCheckedAt)}`;
+
 }
 
 function associationsFor(
@@ -104,7 +99,7 @@ function associationsFor(
     return {
       profileId: association.profileId,
       profileName: profile?.name || association.profileName,
-      authState: profile && browserMode(profile) === "vnc" ? profile.googleBinding?.confirmationState === "confirmed" ? "manually_confirmed" : "bound_unconfirmed" : binding?.authState || binding?.state || binding?.status || "unknown",
+      authState: profile?.googleBinding?.confirmationState === "confirmed" ? "manually_confirmed" : "bound_unconfirmed",
       lastCheckedAt: binding?.lastCheckedAt,
       boundAt: binding?.boundAt,
       lastConfirmedAt: profile?.googleBinding?.lastConfirmedAt || binding?.lastConfirmedAt || binding?.boundAt,
@@ -164,6 +159,7 @@ export default function AccountManager({
               email: account.email,
               recoveryEmail: account.recoveryEmail,
               updatedAt: account.updatedAt,
+              platformAccounts: account.platformAccounts || [],
               bindings: (account.bindings || []).map((binding) => ({
                 profileId: binding.profileId,
                 profileName: binding.profileName,
@@ -183,11 +179,14 @@ export default function AccountManager({
   }, []);
   useEffect(() => {
     void load();
+    const refresh = () => { void load(); };
+    window.addEventListener("fleet-account-updated", refresh);
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") void load();
     }, 5000);
     return () => {
       clearInterval(timer);
+      window.removeEventListener("fleet-account-updated", refresh);
       requestVersion.current++;
     };
   }, [load]);
@@ -225,7 +224,7 @@ export default function AccountManager({
   const selectedProfile = loginProfiles.find(
     (profile) => profile.id === loginTarget?.profileId,
   );
-  const bindableProfiles = profiles.filter((profile) => !profile.archived && !profile.purgedAt && browserMode(profile) === "vnc");
+  const bindableProfiles = profiles.filter((profile) => !profile.archived && !profile.purgedAt);
   const bindingProfile = bindableProfiles.find((profile) => profile.id === bindingTarget?.profileId);
   function chooseBinding(account: GoogleAccountOption) {
     setLoginTarget(undefined);
@@ -447,9 +446,7 @@ export default function AccountManager({
                       <div className="account-manager-binding-status">
                         <Badge
                           value={binding.authState}
-                          label={
-                            binding.archived ? "实例已归档" : binding.authState === "authenticated" && browserMode(profiles.find((profile) => profile.id === binding.profileId)) === "vnc" ? "历史自动化检测" : authStateLabels[binding.authState] || "登录待验证"
-                          }
+                          label={binding.archived ? "实例已归档" : authStateLabels[binding.authState] || "待人工确认"}
                         />
                         {associationNote(binding) && <small>{associationNote(binding)}</small>}
                       </div>
@@ -465,8 +462,9 @@ export default function AccountManager({
               <div className="account-manager-actions">
                 {associations.map(binding => {
                   const profile = profiles.find(entry => entry.id === binding.profileId);
-                  return !binding.archived && binding.vnc && profile?.googleBinding?.accountId === account.id ? (
-                    <Button key={profile.id} className="account-manager-confirm" variant="primary" busy={busyId === `${profile.id}:confirm`} disabled={Boolean(busyId)} onClick={() => void confirmBinding(profile)}>{binding.authState === "manually_confirmed" ? "启用自动化接管" : "确认已登录"}</Button>
+                  const confirmed = profile?.googleBinding?.confirmationState === "confirmed";
+                  return !binding.archived && profile?.googleBinding?.accountId === account.id ? (
+                    <Button key={profile.id} className="account-manager-confirm" variant={confirmed ? "default" : "primary"} busy={busyId === `${profile.id}:confirm`} disabled={Boolean(busyId)} onClick={() => void confirmBinding(profile)}>{confirmed ? "更新登录确认" : "确认已登录"}</Button>
                   ) : null;
                 })}
                 {associations.length === 0 && <Button icon="plus" onClick={() => createProfile(account)}>
@@ -487,6 +485,17 @@ export default function AccountManager({
                   Google 登录
                 </Button>}
               </div>
+              {associations.length > 0 && <details className="account-manager-platforms">
+                <summary>关联平台（{account.platformAccounts?.length || 0}）</summary>
+                <PlatformAccountList accounts={account.platformAccounts || []} />
+                {!account.platformAccounts?.length && <p className="muted small">尚未登记关联平台。</p>}
+                {associations.map(binding => {
+                  const profile = profiles.find(entry => entry.id === binding.profileId);
+                  return profile && !profile.archived ? <div className="heading-actions" key={profile.id}>
+                    <Button onClick={() => onOpenProfile(profile.id)}>管理关联平台</Button>
+                  </div> : null;
+                })}
+              </details>}
             </article>;
           })}
         </div>
@@ -507,7 +516,7 @@ export default function AccountManager({
           {loginProfiles.length ? (
             <>
               <Notice>
-                {browserMode(selectedProfile) === "vnc" ? `此入口固定操作已绑定邮箱 ${loginTarget.account.email}，只打开普通 Chrome VNC 桌面。已经登录时可直接在账号关联行点击「确认已登录」，启用自动化接管。` : "所选实例为自动化模式，会保留其 Google 登录辅助兼容功能。"}
+                此入口打开已绑定邮箱 {loginTarget.account.email} 的实例桌面。完成登录后点击「确认已登录」，保存人工记录。
               </Notice>
               <Field label="目标 Chrome 实例">
                 <select
@@ -529,7 +538,7 @@ export default function AccountManager({
                 </select>
               </Field>
               <p className="account-manager-dialog-note">
-                {browserMode(selectedProfile) === "vnc" ? `${vncModeDescription} 确认已登录后将结束人工桌面，并保留用户目录切换到自动化接管。` : "自动化模式的账号检测和人工确认会分别标记。"}
+                请在桌面自行访问 Google 登录页并完成验证。确认只保存人工记录，浏览器模式和桌面会话保持不变。
               </p>
               <div className="modal-actions">
                 <Button onClick={() => setLoginTarget(undefined)}>取消</Button>
@@ -547,7 +556,7 @@ export default function AccountManager({
                     onLogin(selectedProfile, accountId);
                   }}
                 >
-                  {browserMode(selectedProfile) === "vnc" ? "打开VNC登录" : "Google 登录"}
+                  打开登录桌面
                 </Button>
               </div>
             </>

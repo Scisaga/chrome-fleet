@@ -39,7 +39,7 @@ test("metadata access stays available in headless and transitional instances, wh
   assert.doesNotMatch(missing, /已人工确认登录|前往确认/);
 });
 
-test("automation details preserve manual confirmation records and guide unconfirmed instances to VNC", () => {
+test("automation details preserve manual confirmation records and guide unconfirmed instances to manual confirmation", () => {
   const render = (value: Profile) => renderToStaticMarkup(<ProfileConfirmationSummary profile={value} onOpenSettings={() => {}} />);
   const confirmed = render(profile({ browserMode: "automation", googleBinding: { ...binding, confirmationState: "confirmed", lastConfirmedAt: "2026-10-18T01:02:00.000Z" } }));
   assert.match(confirmed, /已人工确认登录/);
@@ -48,7 +48,25 @@ test("automation details preserve manual confirmation records and guide unconfir
   assert.doesNotMatch(confirmed, /前往实例设置|尚未进行人工确认/);
   const pending = render(profile({ browserMode: "automation" }));
   assert.match(pending, /待人工确认登录/);
-  assert.match(pending, /切换为 VNC 模式/);
+  assert.match(pending, /桌面完成登录/);
   assert.match(pending, /前往实例设置/);
   assert.doesNotMatch(pending, /人工确认时间/);
+});
+
+test("retired account-page results cannot override manual confirmation on any card", () => {
+  const value = profile({ browserMode: "automation", googleBinding: { ...binding, confirmationState: "confirmed", lastConfirmedAt: "2026-10-01T01:02:00.000Z" },
+    accounts: [{ id: "account_google", provider: "google", alias: "fixture", expectedIdentity: "fixture@example.test", authState: "needs_login", lastVerificationSource: "account_page", lastCheckedAt: "2026-10-22T01:00:00.000Z" }] });
+  const html = entry(value);
+  assert.match(html, /已人工确认登录/);
+  assert.doesNotMatch(html, /Google · 需要登录/);
+  const history = renderToStaticMarkup(<ProfileConfirmationSummary profile={value} onOpenSettings={() => {}} />);
+  assert.match(history, /已人工确认登录/);
+  assert.match(history, /人工确认时间/);
+});
+
+test("returning to ordinary Chrome displays manual confirmation instead of an old automated failure", () => {
+  const html = entry(profile({ browserMode: "vnc", googleBinding: { ...binding, confirmationState: "confirmed", lastConfirmedAt: "2026-10-01T01:02:00.000Z" },
+    accounts: [{ id: "account_google", provider: "google", alias: "fixture", expectedIdentity: "fixture@example.test", authState: "needs_login", lastVerificationSource: "account_page", lastCheckedAt: "2026-10-22T01:00:00.000Z" }] }));
+  assert.match(html, /已人工确认登录/);
+  assert.doesNotMatch(html, /Google · 需要登录/);
 });

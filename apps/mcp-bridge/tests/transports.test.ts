@@ -9,7 +9,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createMcpServer, installMcpHttp } from '../src/index.js';
 import type { ApiCall } from '@chrome-fleet/sdk';
 
-const required = ['profiles_list','profiles_get','profiles_create','profiles_start','profiles_stop','profiles_restart','profiles_runtime_policy_set','profiles_proxy_get','profiles_proxy_set','profiles_proxy_test','profiles_vnc_password_set','accounts_check','manual_session_open','manual_session_close','jobs_submit','jobs_get','jobs_cancel','jobs_resume','browser_pages_list','browser_navigate','browser_click','browser_fill','browser_extract','browser_screenshot','cookies_export','cookies_import','storage_state_export','storage_state_import','profiles_backup','profiles_restore','artifacts_get','browser_versions_list','browser_updates_check','browser_updates_apply','browser_updates_rollback'];
+const required = ['profiles_list','profiles_get','profiles_create','profiles_start','profiles_stop','profiles_restart','profiles_runtime_policy_set','profiles_proxy_get','profiles_proxy_set','profiles_proxy_test','profiles_vnc_password_set','manual_session_open','manual_session_close','jobs_submit','jobs_get','jobs_cancel','jobs_resume','browser_pages_list','browser_navigate','browser_click','browser_fill','browser_extract','browser_screenshot','cookies_export','cookies_import','storage_state_export','storage_state_import','profiles_backup','profiles_restore','artifacts_get','browser_versions_list','browser_updates_check','browser_updates_apply','browser_updates_rollback'];
 
 test('official client initializes, discovers all tools and queues single browser steps', async () => {
   const received: unknown[][] = [];

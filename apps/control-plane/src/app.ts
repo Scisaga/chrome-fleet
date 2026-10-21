@@ -1,3 +1,4 @@
+import { accountView } from "./account-confirmation.js";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import serveStatic from "@fastify/static";
@@ -9,6 +10,11 @@ import { hash, id, now } from "@chrome-fleet/core";
 import {
   FleetError,
   GoogleBindingInputSchema,
+  GoogleLoginConfirmationSchema,
+  PlatformInputSchema,
+  PlatformPatchSchema,
+  PlatformLinkSchema,
+  PlatformConfirmationSchema,
   CreateProfileSchema,
   ProxySchema,
   JobSchema,
@@ -323,6 +329,24 @@ export async function createApp(
     const job = service.submit(kind, pid, b, p.id);
     return { jobId: job.id, status: job.status };
   };
+  route("GET", "/platforms", "read", ({ query }) => list(service.platforms.list(), query));
+  route("POST", "/platforms", "admin", ({ body }) => service.platforms.create(body), 201);
+  route("PATCH", "/platforms/:platformId", "admin", ({ params, body }) => service.platforms.update(params.platformId, body));
+  route("DELETE", "/platforms/:platformId", "admin", ({ params }) => service.platforms.delete(params.platformId));
+  route("POST", "/profiles/:profileId/platforms/:platformId", "manage", ({ pid, params, body, p }) => {
+    auth.require(p, "automate", pid);
+    return service.platforms.link(pid, params.platformId, body, p);
+  }, 201);
+  route("DELETE", "/profiles/:profileId/platforms/:platformId", "manage", ({ pid, params, p }) => {
+    auth.require(p, "automate", pid);
+    return service.platforms.unlink(pid, params.platformId);
+  });
+  route("POST", "/profiles/:profileId/platforms/:platformId/confirm", "manage", ({ pid, params, body, p }) => {
+    auth.require(p, "automate", pid);
+    return service.platforms.confirm(pid, params.platformId, body, p);
+  });
+  route("POST", "/profiles/:profileId/platforms/:platformId/login", "automate", ({ pid, params, p }) =>
+    service.platforms.openLogin(pid, params.platformId, p), 200, { cacheResponse: false });
   route("GET", "/host-metrics", "read", () => service.hostMetrics.snapshot());
   route("GET", "/profiles", "read", ({ p, query }) =>
     list(
@@ -627,8 +651,8 @@ export async function createApp(
       }
     },
   );
-  route("GET", "/google-accounts", "admin", ({ query }) =>
-    list(service.google.list(), query),
+  route("GET", "/google-accounts", "admin", ({ query, p }) =>
+    list(service.google.list(p), query),
   );
   route("POST", "/google-accounts", "admin", ({ body, p }) =>
     service.google.create(body, p), 201,
@@ -655,26 +679,19 @@ export async function createApp(
     },
     201,
   );
-  route(
-    "POST",
-    "/profiles/:id/google-login/check",
-    "automate",
-    ({ pid, p, body }) => {
-      auth.require(p, "manage", pid);
-      z.object({ idempotencyKey: z.string().max(128).optional() }).strict().parse(body);
-      return service.google.check(pid, p);
-    },
-  );
+  route("POST", "/profiles/:id/google-login/check", "automate", () => {
+    throw new FleetError("ACCOUNT_CHECK_REMOVED", "主动账号检测已移除，请在实例详情人工确认登录", 410);
+  }, 200, { cacheResponse: false });
   route("GET", "/profiles/:id/accounts", "read", ({ pid, query }) =>
     list(
-      service.db.list<any>("accounts").filter((a) => a.profileId === pid),
+      service.db.list<any>("accounts").filter((a) => a.profileId === pid).map(accountView),
       query,
     ),
   );
   route("POST", "/profiles/:id/google-login/confirm", "automate", ({ pid, p, body }) => {
     auth.require(p, "manage", pid);
     auth.require(p, "admin", pid);
-    const input = GoogleBindingInputSchema.parse(body);
+    const input = GoogleLoginConfirmationSchema.parse(body);
     return service.google.confirm(pid, p, input.accountId);
   });
   route("PUT", "/profiles/:id/google-binding", "manage", ({ pid, p, body }) => {
@@ -686,20 +703,16 @@ export async function createApp(
     "/profiles/:id/accounts",
     "manage",
     ({ pid, body, p }) => {
-      if (typeof body.provider === "string" && body.provider.toLowerCase() === "google" && service.browserMode(service.profile(pid)) === "vnc") {
+      if (typeof body.provider === "string" && body.provider.toLowerCase() === "google") {
         auth.require(p, "admin", pid); auth.require(p, "automate", pid);
       }
       return service.bindAccount(pid, body, p);
     },
     201,
   );
-  route(
-    "POST",
-    "/profiles/:id/accounts/check",
-    "automate",
-    ({ pid, p }) => queued("accounts_check", pid, {}, p),
-    202,
-  );
+  route("POST", "/profiles/:id/accounts/check", "automate", () => {
+    throw new FleetError("ACCOUNT_CHECK_REMOVED", "主动账号检测已移除，请在实例详情人工确认登录", 410);
+  }, 200, { cacheResponse: false });
   route(
     "POST",
     "/profiles/:id/manual-sessions",
@@ -733,6 +746,7 @@ export async function createApp(
         )
         .map(({ fencingToken, ...s }) => ({
           ...s,
+          ...(s.googleLogin ? { googleLogin: service.google.loginState(s.profileId, s.googleLogin) } : {}),
           desktopPath: `/profiles/${s.profileId}/desktop`,
         })),
       query,
@@ -750,7 +764,7 @@ export async function createApp(
       if (s.principal !== p.id && !p.scopes.includes("admin"))
         throw new FleetError("SESSION_DENIED", "无权结束此人工会话", 403);
       if (s.googleLogin && !s.closed)
-        await service.google.finishSession(s, s.principal === p.id);
+        await service.google.finishSession(s);
       else await service.revokeDesktop(s.profileId);
       return { closed: true };
     },
@@ -1143,11 +1157,18 @@ export async function createApp(
   route("GET", "/audit", "admin", ({ query }) =>
     list(service.db.list("audit").reverse(), query),
   );
+  // Keep HTTP tombstones for stale clients without advertising removed operations.
+  delete openapi.paths["/api/v1/profiles/{id}/accounts/check"];
+  delete openapi.paths["/api/v1/profiles/{id}/google-login/check"];
   openapi.components.schemas = {
     CreateProfile: z.toJSONSchema(CreateProfileSchema),
     ProxyConfig: z.toJSONSchema(ProxySchema),
     AutomationJob: z.toJSONSchema(JobSchema),
     RuntimePolicy: z.toJSONSchema(RuntimeSchema),
+    PlatformInput: z.toJSONSchema(PlatformInputSchema),
+    PlatformPatch: z.toJSONSchema(PlatformPatchSchema),
+    PlatformLink: z.toJSONSchema(PlatformLinkSchema),
+    PlatformConfirmation: z.toJSONSchema(PlatformConfirmationSchema),
     AsyncJob: {
       type: "object",
       required: ["jobId", "status"],
@@ -1162,6 +1183,10 @@ export async function createApp(
     ["/api/v1/jobs", "post", "AutomationJob"],
     ["/api/v1/profiles/{id}/proxy", "put", "ProxyConfig"],
     ["/api/v1/profiles/{id}/runtime-policy", "patch", "RuntimePolicy"],
+    ["/api/v1/platforms", "post", "PlatformInput"],
+    ["/api/v1/platforms/{platformId}", "patch", "PlatformPatch"],
+    ["/api/v1/profiles/{profileId}/platforms/{platformId}", "post", "PlatformLink"],
+    ["/api/v1/profiles/{profileId}/platforms/{platformId}/confirm", "post", "PlatformConfirmation"],
   ])
     openapi.paths[path][method].requestBody = {
       required: true,

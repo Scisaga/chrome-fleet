@@ -135,3 +135,23 @@ test('pending update validates its actual Chrome version before allowing an expl
     assert.equal(f.service.profile(p.id).image, f.config.defaultImage); assert.equal(f.service.profile(p.id).state, 'stopped'); assert.equal(await readFile(file, 'utf8'), 'pre-pending-state');
   } finally { await f.close(); }
 });
+
+test('running and deferred upgrades preserve account records without any login detection', async () => {
+  const f = await fixture();
+  try {
+    const running = await runningOld(f);
+    const stopped = await f.create('cold update without account probing');
+    for (const pid of [running.id, stopped.id]) f.service.db.set('accounts', `account_${pid}`, { id: `account_${pid}`, profileId: pid, provider: 'google', expectedIdentity: `${pid}@example.test`, authState: 'needs_login', lastVerificationSource: 'account_page', lastCheckedAt: '2026-01-01T00:00:00Z', lastConfirmedAt: '2026-01-02T00:00:00Z', verificationSource: 'manual_confirmation' });
+    const before = f.service.db.list('accounts');
+    const paths: string[] = [], original = f.service.agent.bind(f.service);
+    f.service.agent = async (p, path, body, token, timeout) => { paths.push(path); return original(p, path, body, token, timeout); };
+    candidate(f);
+    const run = await f.service.applyUpdate({ versionId: candidateId });
+    assert.equal(run.profiles.find((row: any) => row.profileId === running.id)?.phase, 'succeeded');
+    assert.equal(run.profiles.find((row: any) => row.profileId === stopped.id)?.phase, 'pending');
+    const token = f.service.db.acquire(stopped.id, 'cold-upgrade')!;
+    try { await f.service.ensureStart(stopped.id, true, token); } finally { f.service.db.release(stopped.id, 'cold-upgrade', token); }
+    assert.equal(paths.some(path => path.startsWith('/accounts/')), false);
+    assert.deepEqual(f.service.db.list('accounts'), before);
+  } finally { await f.close(); }
+});

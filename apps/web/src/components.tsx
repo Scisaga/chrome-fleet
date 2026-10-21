@@ -301,6 +301,7 @@ const labels: Record<string, string> = {
   unknown: "未检测",
   needs_login: "需要登录",
   needs_verification: "需要验证",
+  account_mismatch: "账号不匹配",
   unsupported: "暂不支持",
   on_demand: "按需启动",
   manual: "手动启动",

@@ -1,3 +1,5 @@
+import type { PlatformAccount } from "@chrome-fleet/contracts";
+export type { Platform, PlatformInput, PlatformAccount } from "@chrome-fleet/contracts";
 export class ApiError extends Error {
   code: string;
   requestId?: string;
@@ -90,12 +92,18 @@ export interface Account {
   lastConfirmedAt?: string;
   bindingSource?: string;
   evidence?: unknown;
+  nickname?: string;
+  lastSuccessAt?: string;
+  detectedIdentity?: string;
+  platformId?: string;
+  lastVerificationSource?: string;
 }
 export interface GoogleAccountOption {
   id: string;
   email: string;
   recoveryEmail?: string;
   updatedAt?: string;
+  platformAccounts?: PlatformAccount[];
   bindings: { profileId: string; profileName: string; archived?: boolean }[];
 }
 export interface GoogleLoginStatus {
@@ -106,11 +114,6 @@ export interface GoogleLoginStatus {
   expectedAccountId?: string;
   lastConfirmedAt?: string;
   takeoverJobId?: string;
-  autofill?: {
-    // email_submitted is retained for older sessions; the email Next is a human action.
-    stage: "waiting" | "email_filled" | "email_submitted" | "password_filled" | "manual_required" | "account_mismatch" | "unsupported";
-    message?: string;
-  };
   expectedEmail?: string;
   detectedEmail?: string;
   message?: string;
@@ -140,6 +143,7 @@ export interface Profile {
   state: string;
   browserMode?: "vnc" | "automation";
   googleBinding?: GoogleBinding;
+  platformAccounts?: PlatformAccount[];
   desiredState?: string;
   startupPolicy: "on_demand" | "manual" | "always";
   autoWakePaused?: boolean;

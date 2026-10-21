@@ -22,7 +22,57 @@ async function bind(f: Fixture, pid: string, accountId: string, token = fixtureT
   assert.equal(response.statusCode, 200, response.body); return response.json().data;
 }
 
-test('VNC binding stays metadata while confirmation persists one takeover job without inline browser access', async () => {
+test('manual-only confirmation preserves the ordinary browser, human lease and open desktop', async () => {
+  const f = await fixture();
+  try {
+    const { profile, accounts: [selected] } = await setup(f);
+    await bind(f, profile.id, selected.id);
+    const sessionId = 'manual_confirmation_fixture';
+    const fencingToken = f.service.db.acquire(profile.id, sessionId, 60000);
+    f.service.db.set('manual-sessions', sessionId, { id: sessionId, profileId: profile.id, principal: 'bootstrap', expiresAt: expires(), closed: false, fencingToken });
+    f.service.agent = async () => { throw new Error('manual-only confirmation must not access browser'); };
+    f.service.ensureStart = async () => { throw new Error('manual-only confirmation must not restart Chrome'); };
+    f.service.revokeDesktop = async () => { throw new Error('manual-only confirmation must not close the desktop'); };
+    f.service.vault.get = () => { throw new Error('manual-only confirmation must not read credentials'); };
+    const response = await f.request('POST', confirmPath(profile.id), { accountId: selected.id, enableAutomation: false });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().data.status, 'bound');
+    assert.equal(response.json().data.takeoverJobId, undefined);
+    assert.equal(f.service.profile(profile.id).browserMode, 'vnc');
+    assert.equal(f.service.db.get<any>('manual-sessions', sessionId).closed, false);
+    assert.equal(f.service.db.lease(profile.id).owner, sessionId);
+    assert.equal(f.service.db.list('jobs').length, 0);
+    const confirmedAt = f.service.google.binding(profile.id)?.lastConfirmedAt;
+    assert.ok(confirmedAt);
+    const repeated = await f.request('POST', confirmPath(profile.id), { accountId: selected.id, enableAutomation: false });
+    assert.equal(repeated.statusCode, 200);
+    assert.ok(Date.parse(f.service.google.binding(profile.id)?.lastConfirmedAt || "") >= Date.parse(confirmedAt || ""));
+  } finally { await f.close(); }
+});
+
+test('manual-only confirmation retains independent automatic results and rejects a queued mode change', async () => {
+  const f = await fixture();
+  try {
+    const { profile, accounts: [selected] } = await setup(f);
+    await bind(f, profile.id, selected.id);
+    const row = f.service.db.list<any>('accounts')[0];
+    f.service.db.set('accounts', row.id, { ...row, authState: 'needs_verification', evidence: 'Synthetic browser rejection', lastCheckedAt: '2026-10-22T01:00:00Z', lastVerificationSource: 'account_page', lastSuccessAt: '2026-10-20T01:00:00Z' });
+    const response = await f.request('POST', confirmPath(profile.id), { accountId: selected.id, enableAutomation: false });
+    assert.equal(response.statusCode, 200, response.body);
+    const after = f.service.db.get<any>('accounts', row.id);
+    assert.equal(after.authState, 'manually_confirmed');
+    assert.equal(after.historicalVerification.authState, 'needs_verification');
+    assert.equal(after.evidence, 'Synthetic browser rejection');
+    assert.equal(after.lastCheckedAt, '2026-10-22T01:00:00Z');
+    assert.equal(after.lastSuccessAt, '2026-10-20T01:00:00Z');
+    assert.equal(f.service.google.binding(profile.id)?.confirmationState, 'confirmed');
+    f.service.submit('browser_mode', profile.id, { browserMode: 'automation' }, 'bootstrap');
+    assert.equal((await f.request('POST', confirmPath(profile.id), { accountId: selected.id, enableAutomation: false })).statusCode, 409);
+    assert.equal((await f.request('POST', confirmPath(profile.id), { accountId: selected.id, enableAutomation: 'false' })).statusCode, 400);
+  } finally { await f.close(); }
+});
+
+test('binding and confirmation persist metadata without browser access or takeover jobs', async () => {
   const f = await fixture();
   try {
     const { profile, accounts } = await setup(f); const selected = accounts[0];
@@ -35,10 +85,10 @@ test('VNC binding stays metadata while confirmation persists one takeover job wi
     assert.equal(f.service.db.list('manual-sessions').length, 0); assert.equal(f.starts.size, 0);
     const confirmed = await f.request('POST', confirmPath(profile.id), { accountId: selected.id });
     assert.equal(confirmed.statusCode, 200); assert.equal(confirmed.json().data.verificationSource, 'manual_confirmation');
-    assert.ok(confirmed.json().data.takeoverJobId);
-    assert.equal(f.service.db.get<any>('jobs', confirmed.json().data.takeoverJobId).kind, 'browser_mode');
-    const state = (await f.request('POST', `/api/v1/profiles/${profile.id}/google-login/check`, {})).json().data;
-    assert.equal(state.status, 'bound'); assert.equal(state.lastConfirmedAt, confirmed.json().data.lastConfirmedAt);
+    assert.equal(confirmed.json().data.takeoverJobId, undefined);
+    assert.equal(f.service.db.list('jobs').length, 0);
+    const state = confirmed.json().data;
+    assert.equal((await f.request('POST', `/api/v1/profiles/${profile.id}/google-login/check`, {})).statusCode, 410);
     const visible = (await f.request('GET', `/api/v1/profiles/${profile.id}`)).json().data;
     assert.equal(visible.googleBinding.confirmationState, 'confirmed'); assert.equal(visible.googleBinding.lastConfirmedAt, state.lastConfirmedAt);
     const record = f.service.db.list<any>('accounts')[0];
@@ -116,14 +166,14 @@ test('directory binding and confirmation enforce admin/profile scopes, Web CSRF,
     assert.equal((await f.request('PUT', bindingPath(profile.id), { accountId: 'google_'+'0'.repeat(24) })).statusCode, 404);
     assert.equal((await f.request('PUT', bindingPath(profile.id), { accountId: first.id, email: 'arbitrary@example.test' })).statusCode, 400);
     const automation = await f.create();
-    assert.equal((await f.request('PUT', bindingPath(automation.id), { accountId: first.id })).json().code, 'BROWSER_MODE_REQUIRED');
+    assert.equal((await f.request('PUT', bindingPath(automation.id), { accountId: first.id })).json().code, 'GOOGLE_ACCOUNT_ALREADY_BOUND');
     const revoked = f.auth.issue(['admin'], [profile.id], expires());
     const record = f.service.db.get<any>('credentials', revoked.id); record.revoked = true; f.service.db.set('credentials', record.id, record);
     assert.equal((await f.request('POST', confirmPath(profile.id), { accountId: first.id }, revoked.token)).statusCode, 401);
   } finally { await f.close(); }
 });
 
-test('VNC Google entry uses its binding and confirmation releases the owning session for takeover', async () => {
+test('Google entry uses its binding and confirmation preserves the owning desktop session', async () => {
   const f = await fixture();
   try {
     const { profile, accounts: [first, second] } = await setup(f);
@@ -140,13 +190,12 @@ test('VNC Google entry uses its binding and confirmation releases the owning ses
     assert.equal(own.googleLogin.expectedAccountId, second.id); assert.equal(own.googleLogin.status, 'waiting'); assert.equal(own.googleLogin.lastConfirmedAt, undefined);
     const otherAdmin = f.auth.issue(['admin'], [profile.id], expires());
     assert.equal((await f.request('POST', confirmPath(profile.id), { accountId: second.id }, otherAdmin.token)).statusCode, 200);
-    assert.equal(f.service.db.get<any>('manual-sessions', session.id).closed, true);
-    assert.equal(f.service.db.lease(profile.id)?.owner, null);
-    assert.equal((await f.request('POST', openPath, {})).json().code, 'PROFILE_BUSY');
-    const state = (await f.request('POST', `/api/v1/profiles/${profile.id}/google-login/check`, {})).json().data;
-    assert.equal(state.status, 'bound'); assert.equal(state.expectedAccountId, second.id);
+    assert.equal(f.service.db.get<any>('manual-sessions', session.id).closed, false);
+    assert.equal(f.service.db.lease(profile.id)?.owner, session.id);
+    assert.equal((await f.request('POST', openPath, {})).statusCode, 201);
+    assert.equal((await f.request('POST', `/api/v1/profiles/${profile.id}/google-login/check`, {})).statusCode, 410);
     await f.service.revokeDesktop(profile.id);
-    assert.equal((await f.request('POST', `/api/v1/profiles/${profile.id}/google-login/check`, {})).json().data.status, 'bound');
+    assert.equal(f.service.google.binding(profile.id)?.confirmationState, 'confirmed');
   } finally { await f.close(); }
 });
 

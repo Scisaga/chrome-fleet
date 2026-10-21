@@ -256,7 +256,7 @@ sessionStorage 不由标准 storageState 流程自动保存；若特定站点需
 
 - `profiles_list / profiles_get / profiles_create / profiles_start / profiles_stop / profiles_restart / profiles_runtime_policy_set`
 - `profiles_proxy_get / profiles_proxy_set / profiles_proxy_test / profiles_vnc_password_set`
-- `accounts_check / manual_session_open / manual_session_close`
+- `manual_session_open / manual_session_close`（账号主动检测已移除，改用实例详情人工确认）
 - `jobs_submit / jobs_get / jobs_cancel / jobs_resume`
 - `browser_pages_list / browser_navigate / browser_click / browser_fill / browser_extract / browser_screenshot`
 - `cookies_export / cookies_import / storage_state_export / storage_state_import`

@@ -40,9 +40,10 @@ Account records, browser user directories and backups stay on your server. Open 
 | --- | --- |
 | Manage multiple browser environments | Separate Chrome instances, user directories, proxies and desktop passwords, with on-demand startup and idle shutdown |
 | Sign in and manage accounts | An account directory, email and password viewing/copying, Google account binding and manual login confirmation; confirmed accounts open their desktop directly |
+| Manage platforms linked to Google | Configure platform URLs, record an account ID and nickname in instance details, and confirm login manually; the account directory shows the same records |
 | Connect an AI client | A Skill that guides deployment or reuses an existing service, and registers MCP for Codex / Claude Code |
 | Let AI use a specific account | MCP tools select an instance to navigate, click, fill forms, extract text, take screenshots and run multi-step tasks |
-| Take over a browser at any time | Remote desktops in a new window or embedded view, with bidirectional UTF-8 clipboard support |
+| Take over a browser at any time | Remote desktops in a new window or embedded view, with active sessions grouped in one panel with thin dividers and bidirectional UTF-8 clipboard support |
 | Monitor activity and resource use | Host and per-instance CPU and memory metrics, task progress, results and history |
 | Preserve and restore sessions | Encrypted session exports, full snapshots taken while stopped, backups before upgrades, and rollback using paired images and snapshots |
 
@@ -82,7 +83,7 @@ These English documentation previews use the actual frontend with localized demo
 
 ### Account management
 
-View account emails, recovery emails, associated instances and login confirmation status. Confirmed accounts show an **Open desktop** action; accounts awaiting confirmation retain their login action.
+View account emails, recovery emails, associated instances and login confirmation status. Confirmed accounts show an **Open desktop** action; accounts awaiting confirmation retain their login action. After confirmation, the confirmation action becomes **Update login confirmation** to refresh the record and timestamp after checking the account again.
 
 [![Account management: sample emails, password viewing, login status and desktop actions](docs/images/screenshots/en/account-directory.png)](docs/images/screenshots/en/account-directory.png)
 
@@ -97,7 +98,7 @@ Inspect task states, hourly task distribution and execution records. Filter by t
 
 ### Account binding and login confirmation
 
-View and copy the bound account's email and password, open its desktop to sign in, then confirm the login and enable automation.
+View and copy the bound account's email and password, open its desktop to sign in, then save a manual confirmation. Enable automation separately in instance settings when needed.
 
 [![Account status: account binding, email copying, masked password and manual login confirmation](docs/images/screenshots/en/account-login.png)](docs/images/screenshots/en/account-login.png)
 
@@ -146,10 +147,12 @@ To access the service from another device, configure `FLEET_BIND_ADDRESS`, `FLEE
 1. In account management, add an existing account's email, password and optional recovery email.
 2. Choose **Create Chrome instance** on that account's row, then configure its name, proxy and resources.
 3. New instances use regular Chrome / VNC mode by default. Open the Google login desktop and complete sign-in and verification manually.
-4. Return to account status or account management and choose **Confirm logged in**. The system saves a recovery point and switches to automation using the same user directory.
+4. Return to account status or account management and choose **Confirm logged in**. The system saves a manual record while preserving the browser mode and desktop session. Switch to automation separately in instance settings when needed; Google may require login verification again.
 5. For daily use, choose **Open desktop**, or submit web tasks to this instance through MCP.
 
 Account binding, manual confirmation and the website's actual login state are recorded separately. Initial login, CAPTCHAs and two-factor authentication require human interaction. Preserving the user directory does not guarantee that a website will never ask you to sign in again. See [Account login and session recovery](docs/session-recovery.md#google-人工登录与实例绑定) for details.
+
+For platform accounts first created through Google, configure the URLs in platform management, then register and manually confirm the account in the instance's account status tab. See [Linked platforms and manual confirmation](docs/session-recovery.md#google-关联平台与人工确认) for Bilibili and GitHub URL examples and instructions.
 
 ## Browser automation with MCP
 
@@ -164,7 +167,7 @@ MCP is built into the management service. With Streamable HTTP, connect directly
 
 If your client accepts request headers, set `Authorization: Bearer <platform-access-token>`.
 
-The **MCP** page in the dashboard sidebar lets you copy the server URL and search **35 tools across 6 categories**, with descriptions and required permissions.
+The **MCP** page in the dashboard sidebar lets you copy the server URL and search **34 tools across 6 categories**, with descriptions and required permissions.
 
 [![MCP integration: server URL, authentication information and tool directory](docs/images/screenshots/en/mcp-integration.png)](docs/images/screenshots/en/mcp-integration.png)
 
@@ -212,7 +215,7 @@ After submission, query the returned `jobId`:
 }
 ```
 
-To check the target account's identity before execution, add `expectedAccountId` to `jobs_submit` or a single-step browser tool. Use the target instance's `accounts[].id`. This differs from `googleBinding.accountId` in the account directory binding; the IDs are not interchangeable. If the identity cannot be confirmed, the task waits for human intervention.
+To require a manual account confirmation before execution, add `expectedAccountId` to `jobs_submit` or a single-step browser tool. Use the target instance's `accounts[].id`. This differs from `googleBinding.accountId` in the account directory binding; the IDs are not interchangeable. If a manual confirmation is missing, the task waits for human intervention. The system does not visit account pages to verify website sessions.
 
 ### Common operations
 
@@ -285,7 +288,7 @@ Chrome Fleet is designed for self-hosting on a single Linux machine. The dashboa
 | --- | --- | --- |
 | Dashboard | React 19 · Vite 7 · TypeScript 5.9 | Accounts, instances, remote desktops and tasks |
 | Control service | Node.js 24 LTS · Fastify 5 | Authentication, instance authorization, task orchestration and update scheduling |
-| AI integration | MCP SDK 1.32 · Streamable HTTP / stdio | 35 tools using the same REST permissions and queue |
+| AI integration | MCP SDK 1.32 · Streamable HTTP / stdio | 34 tools using the same REST permissions and queue |
 | Browser and desktop | Chrome · Playwright 1.64 · noVNC | Manual desktops in regular Chrome and switching to automation mode |
 | Persistence | SQLite WAL · AES-256-GCM | Task state, account directory, encrypted credentials and backups |
 | Runtime and isolation | Docker Compose · Linux x86_64 | Instance lifecycle, separate user directories and network rules |

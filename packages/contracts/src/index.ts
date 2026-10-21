@@ -4,6 +4,9 @@ export const GoogleBindingInputSchema = z.object({
   accountId: z.string().regex(/^google_[0-9a-f]{24}$/),
   idempotencyKey: z.string().max(128).optional(),
 }).strict();
+export const GoogleLoginConfirmationSchema = GoogleBindingInputSchema.extend({
+  enableAutomation: z.literal(false).optional(),
+});
 export const GoogleBindingSchema = z.object({
   accountId: z.string(), email: z.string().email(),
   confirmationState: z.enum(["unconfirmed", "confirmed"]),
@@ -82,6 +85,52 @@ export const LocatorSchema = z
     iframe: z.string().max(2048).optional(),
   })
   .strict();
+const AccountPageUrl = z.string().url().max(2048).refine(value => {
+  const url = new URL(value);
+  return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+}, "账户页面须为不含凭据的 HTTP(S) 地址");
+export const PlatformInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  homeUrl: AccountPageUrl,
+  loginUrl: AccountPageUrl,
+  accountUrl: AccountPageUrl,
+  enabled: z.boolean().default(true),
+}).strict();
+export const PlatformPatchSchema = PlatformInputSchema.partial();
+export const PlatformLinkSchema = z.object({
+  googleAccountId: z.string().regex(/^google_[0-9a-f]{24}$/),
+  confirmedGoogleSignup: z.literal(true),
+  idempotencyKey: z.string().max(128).optional(),
+}).strict();
+export const PlatformConfirmationSchema = z.object({
+  identity: z.string().trim().min(1).max(256),
+  nickname: z.string().trim().max(256).optional(),
+  confirmedLoggedIn: z.literal(true),
+  idempotencyKey: z.string().max(128).optional(),
+}).strict();
+export type PlatformInput = z.infer<typeof PlatformInputSchema>;
+export type Platform = PlatformInput & { id: string; builtin?: boolean; createdAt?: string; updatedAt?: string };
+export interface PlatformAccount {
+  id: string;
+  profileId: string;
+  platformId: string;
+  platformName: string;
+  googleAccountId: string;
+  loginMethod: "google";
+  expectedIdentity: string;
+  nickname?: string;
+  authState: "manually_confirmed" | "bound_unconfirmed";
+  confirmationState: "confirmed" | "unconfirmed";
+  linkState: "pending" | "linked";
+  firstLinkedAt?: string;
+  lastConfirmedAt?: string;
+  confirmedBy?: string;
+  historicalVerification?: { authState?: string; lastCheckedAt?: string; lastSuccessAt?: string; evidence?: unknown; detectedIdentity?: string };
+  evidence?: string;
+  accountUrl: string;
+  loginUrl: string;
+  enabled: boolean;
+}
 export const StepSchema = z
   .object({
     action: z.enum([

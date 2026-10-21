@@ -22,7 +22,7 @@ Web 任务中心与实例任务页默认展示包含今天的过去 7 个自然�
 | --- | --- |
 | `read` | 实例、任务、版本和授权元数据读取 |
 | `manage` | 实例配置、生命周期、代理与 VNC |
-| `automate` | 浏览器任务、账号检测、人工接管 |
+| `automate` | 浏览器任务、人工接管与登录确认 |
 | `session:read` | Cookies 和站点状态导出 |
 | `session:write` | 会话文件上传与导入 |
 | `backup` | 完整快照备份及恢复 |
@@ -90,13 +90,49 @@ curl --fail-with-body "$FLEET_URL/api/v1/jobs" \
 
 | 页面 URL | 用途 |
 | --- | --- |
-| `/profiles`、`/accounts`、`/jobs`、`/updates`、`/guide` | 实例、账号、任务、更新和帮助主页 |
+| `/profiles`、`/accounts`、`/platforms`、`/jobs`、`/updates`、`/guide` | 实例、账号、平台、任务、更新和帮助主页 |
 | `/integrations/mcp` | MCP连接信息、功能目录、权限与模式说明；`/mcp`仍为协议入口 |
 | `/profiles/new?from=accounts&account=<accountId>` | 从账号页为所选账号创建实例，关联账号只读，取消后返回账号页 |
 | `/profiles/<profileId>/{overview,settings,accounts,tasks,sessions,updates}` | 实例详情及对应标签页 |
 | `/jobs?job=<jobId>` 或实例任务页的 `?job=<jobId>` | 指定任务详情 |
 
 页面可直达、刷新并使用前进/后退；URL 只记录页面与实体 ID，不接受凭据作为登录参数。界面统一从账号管理创建实例；不带有效账号 ID 的旧创建链接（含 `/profiles/new?from=profiles` 和 `#create`）会转到 `/accounts`。页面路由不改变 REST 权限或资源范围。
+
+## 关联平台与人工登录确认
+
+Google 与关联平台均由用户在实例桌面中完成登录，再保存人工确认。平台地址只供人工访问，不再配置或运行身份读取规则。平台配置保存在 `platforms`，账号关联沿用 `accounts`。Google 是只读内置平台，账户设置页保留 `https://myaccount.google.com/`。
+
+| 接口（前缀 `/api/v1`） | 权限与行为 |
+| --- | --- |
+| `GET /platforms` | `read`；分页列出名称、首页、登录入口、账户页及启用状态 |
+| `POST /platforms`、`PATCH /platforms/{platformId}` | `admin`；新增或修改普通平台 |
+| `DELETE /platforms/{platformId}` | `admin`；有关联账号时返回 `PLATFORM_IN_USE` |
+| `POST /profiles/{profileId}/platforms/{platformId}` | `manage` + `automate`；登记 Google 首次开户关联，重复登记返回原记录 |
+| `POST /profiles/{profileId}/platforms/{platformId}/confirm` | `manage` + `automate`；保存人工确认的账号 ID、昵称、时间与操作者 |
+| `DELETE /profiles/{profileId}/platforms/{platformId}` | `manage` + `automate`；空闲时解除管理关联，不退出网站 |
+| `POST /profiles/{profileId}/platforms/{platformId}/login` | `automate`；打开实例桌面并返回 `loginUrl`，用户自行在此桌面中访问；不导航网页 |
+
+普通平台配置：
+
+```json
+{
+  "name": "示例平台",
+  "homeUrl": "https://example.com/",
+  "loginUrl": "https://example.com/login",
+  "accountUrl": "https://example.com/settings/account",
+  "enabled": true
+}
+```
+
+登记关联接收 `{ "googleAccountId": "google_<目录ID>", "confirmedGoogleSignup": true }`，必须使用实例绑定的 Google 账号，仅支持通过该 Google 首次创建平台账户的场景。人工确认接收 `{ "identity": "平台唯一账号ID或邮箱", "nickname": "昵称（选填）", "confirmedLoggedIn": true }`。首次确认保存平台身份和 `firstLinkedAt`；再次确认可更新昵称、`lastConfirmedAt` 与 `confirmedBy`。已有身份不一致返回 `ACCOUNT_MISMATCH`，禁止直接覆盖；同一平台身份不能重复绑定给其他 Google 账号。更换 Google 主账号前须解除关联平台。
+
+管理界面在未确认时显示“确认已登录”，`confirmationState` 为 `confirmed` 后显示普通样式的“更新登录确认”，继续使用同一确认接口。再次确认不替换平台唯一身份；Google 账号目录及实例账号页也按确认状态切换按钮文案。
+
+VNC 和自动化模式均支持登记与人工确认，无需启动浏览器、读取页面或凭据，也不改变模式、桌面或人工租约。确认可在人工接管或等待人工的任务期间进行；正在排队或运行的任务会阻止确认。平台停用、实例归档或无关联时不能确认。解除关联沿用任务与人工租约互斥限制。
+
+实例及 Google 目录的 `platformAccounts` 共用记录，包含身份、昵称、所属 Google、`confirmationState:"confirmed"|"unconfirmed"`、`authState:"manually_confirmed"|"bound_unconfirmed"`、`lastConfirmedAt`、`confirmedBy` 和首次关联时间。旧自动检测结果只在 `historicalVerification` 中返回，不作为当前登录状态，不自动转为人工确认。实例不再返回 `accountCheck`。账号目录只读展示平台信息，关联平台的确认操作位于实例详情。
+
+`POST /profiles/{id}/accounts/check` 与 `POST /profiles/{id}/google-login/check` 已移除，授权请求返回 `410 ACCOUNT_CHECK_REMOVED`，不会创建任务或启动实例。旧 `accounts_check` 队列任务也会在访问浏览器前失败。SDK 已移除 `checkAccounts`，新增 `confirmPlatformLogin`；MCP 已移除 `accounts_check`。实例启动、升级、任务前置条件及人工会话关闭均不再触发账号页面检测。旧版 Google 身份轮询与登录自动填写同时移除。
 
 ## API 路由
 
@@ -117,8 +153,8 @@ curl --fail-with-body "$FLEET_URL/api/v1/jobs" \
 | `GET/POST /google-accounts` | 管理员分页读取目录或新增已有账号的登录资料 |
 | `PATCH /google-accounts/{accountId}` | 管理员更新保存的账号密码、辅助邮箱 |
 | `POST /google-accounts/{accountId}/password/reveal` | 管理员主动查看已保存的账号密码 |
-| `GET/POST /profiles/{id}/accounts` | 读取/绑定期望账号及站点检测器 |
-| `POST /profiles/{id}/accounts/check` | 异步身份检测 |
+| `GET/POST /profiles/{id}/accounts` | 读取/绑定期望账号 |
+| `POST /profiles/{id}/accounts/check` | 已移除，返回 `410 ACCOUNT_CHECK_REMOVED` |
 | `POST /profiles/{id}/manual-sessions` | `{durationSeconds?,explicitStart?}` 人工租约与桌面入口 |
 | `DELETE /manual-sessions/{sessionId}` | 结束人工接管并收回入口权限 |
 | `POST /jobs`, `GET /jobs`, `GET /jobs/{jobId}` | 提交/分页/查询任务 |
@@ -194,7 +230,7 @@ const imported = await client.importCookies(profile.id, {
   artifactId: 'artifact_example', mode: 'merge', domains: ['example.com']
 });
 await client.waitForJob(imported.jobId);
-await client.checkAccounts(profile.id); // 导入与登录有效性分开验证
+// 导入后，请在此实例桌面核对实际登录状态，再在实例详情人工确认。
 ```
 
 MCP 客户端连接示例见 [mcp.md](mcp.md)。本地可控站点与 API/MCP 自动测试不代表真实 Google 首次登录、2FA 或长期在线已经验证；这些需要通过人工桌面逐项验收。
@@ -203,31 +239,31 @@ MCP 客户端连接示例见 [mcp.md](mcp.md)。本地可控站点与 API/MCP �
 
 新建实例 `browserMode` 默认为 `vnc`，旧记录缺少字段时为 `automation`。`PUT /api/v1/profiles/{id}/browser-mode` 接收 `{browserMode:"vnc"|"automation"}`，要求 `manage/automate` 和实例权限，返回202队列任务。仅本人持有的人工会话可以在切换时关闭，不接管其他主体。任务正常停机、加密快照、同镜像/原目录/keyring重启；失败不强制关闭或自动回滚。普通PATCH不能修改模式。
 
-VNC 模式停用页面任务、账号检测、代理页面出口测试及 Cookies/storage-state 导入导出，返回 `409 VNC_MODE_UNSUPPORTED`；Agent同样拒绝。原有完整快照、恢复、VNC自动认证和文本剪贴板仍可用，依赖自动化兼容验证的镜像更新延后，空闲关闭暂停。
+VNC 模式停用页面任务、代理页面出口测试及 Cookies/storage-state 导入导出，返回 `409 VNC_MODE_UNSUPPORTED`；Agent同样拒绝。原有完整快照、恢复、VNC自动认证和文本剪贴板仍可用，依赖自动化兼容验证的镜像更新延后，空闲关闭暂停。
 
 - `GET /api/v1/google-accounts`：管理员读取目录邮箱、备用邮箱和关联实例，不返回密码或秘密引用。
 - `POST /api/v1/google-accounts`：管理员提交 `{email,password,recoveryEmail?}` 新增目录账号，返回201与不含密码的账号元数据。邮箱规范化为小写并去除首尾空白；密码1至4096字符且原样保存；辅助邮箱可省略或为空。同邮箱返回 `409 DUPLICATE_ACCOUNT`，不覆盖原密码。支持 `Idempotency-Key`。
 - `PATCH /api/v1/google-accounts/{accountId}`：管理员提交 `{password?,recoveryEmail?}`，至少提供一项；不传密码保留原值，显式空密码无效，辅助邮箱传空字符串可清除。邮箱作为目录标识不可修改，其他邮箱应新增账号。写入使用现有加密 vault，不更改实例、绑定、确认或网站密码，也不回写导入源文件。
 - `POST /api/v1/google-accounts/{accountId}/password/reveal`：管理员提交 `{}`，返回 `data:{password}`；Web会话需CSRF。每次读取当前vault并记录不含密码的 `google_account_password_reveal` 审计，响应 `Cache-Control: no-store`，不使用幂等响应缓存。账号不存在返回404，密文不可读、密码无效或vault邮箱与目录不一致返回 `409 GOOGLE_PASSWORD_UNAVAILABLE`，可通过显式设置新密码修复。普通列表、保存响应和MCP不返回密码或秘密引用。
-- `GET /api/v1/profiles/{id}`：两种模式的实例在唯一Google记录可匹配目录时返回 `googleBinding:{accountId,email,confirmationState:"unconfirmed"|"confirmed",lastConfirmedAt?}`。旧未知状态的单一映射派生为待人工确认，不因此改变真实登录状态。实例卡片据此显示人工确认状态，点击查看账号页；自动化身份检测成功不等于人工确认。
-- `PUT /api/v1/profiles/{id}/google-binding`：严格接收 `{accountId}`，要求管理员及 `manage/automate`、实例权限，仅适用VNC。只保存单一目录账号映射，不启动/导航/读取页面或密码；重复绑定同账号保留确认，明确换绑清除确认。
-- 每个 Google 账号最多关联一个未彻底清理的 Chrome 实例，包括归档实例。跨实例重复创建、绑定和指定账号登录返回 `409 GOOGLE_ACCOUNT_ALREADY_BOUND`；创建请求在分配密码、目录和启动任务前拒绝。自动识别也不会写入重复关联。原实例明确换绑后释放原账号，彻底清理后允许重建；仅归档仍保留关联。账号目录的归档关联带 `archived:true`，界面保留查看入口并隐藏重复创建入口。
-- `POST /api/v1/profiles/{id}/google-login`：VNC只能打开已绑定账号的桌面；省略ID使用当前绑定，传不一致账号返回冲突。显式取得/复用本人桌面租约，返回201及 `id/profileId/desktopPath/expiresAt/googleLogin`；不导航/检测/填写网页。已有人工确认来自持久绑定，不因再次打开而重置。
-- `POST /api/v1/profiles/{id}/google-login/confirm`：严格接收已绑定的 `{accountId}`，要求上述平台授权与 Web CSRF。保存 `authState:"manually_confirmed"`、确认操作者及 `lastConfirmedAt`，结束实例人工桌面并排队切换到自动化模式，不要求当前持有 VNC 租约。返回 `status:"bound",verificationSource:"manual_confirmation",takeoverJobId`，通过任务接口等待接管结果；成功后网页任务和空闲关闭生效。正在执行的任务会复用，已完成的接管不会重复重启；历史人工确认保留原时间。排队时换绑取消旧接管任务，执行前重新校验授权及绑定。确认来源仍为用户声明，不代表服务端身份检测。
-- `POST /api/v1/profiles/{id}/google-login/check`：VNC仅返回持久人工确认状态，不调用Agent；自动化兼容模式仍可检测可信的已登录邮箱。
+- `GET /api/v1/profiles/{id}`：两种模式的实例在唯一Google记录可匹配目录时返回 `googleBinding:{accountId,email,confirmationState:"unconfirmed"|"confirmed",lastConfirmedAt?}`。旧未知状态的单一映射派生为待人工确认，不因此改变真实登录状态。实例卡片据此显示人工确认状态，点击查看账号页。历史自动检测成功不会自动转为人工确认。
+- `PUT /api/v1/profiles/{id}/google-binding`：严格接收 `{accountId}`，要求管理员及 `manage/automate`、实例权限，两种模式均可使用。只保存单一目录账号映射，不启动/导航/读取页面或密码；重复绑定同账号保留确认，明确换绑清除确认。
+- 每个 Google 账号最多关联一个未彻底清理的 Chrome 实例，包括归档实例。跨实例重复创建、绑定和指定账号登录返回 `409 GOOGLE_ACCOUNT_ALREADY_BOUND`；创建请求在分配密码、目录和启动任务前拒绝。原实例明确换绑后释放原账号，彻底清理后允许重建；仅归档仍保留关联。账号目录的归档关联带 `archived:true`，界面保留查看入口并隐藏重复创建入口。
+- `POST /api/v1/profiles/{id}/google-login`：仅打开已绑定账号的桌面；省略ID使用当前绑定，传不一致账号返回冲突。显式取得/复用本人桌面租约，返回201及 `id/profileId/desktopPath/expiresAt/googleLogin`；不导航/检测/填写网页。已有人工确认来自持久绑定，不因再次打开而重置。
+- `POST /api/v1/profiles/{id}/google-login/confirm`：接收已绑定的 `{accountId}`，两种模式均只保存 `manual_confirmation`、确认操作者与最近 `lastConfirmedAt`，保留浏览器模式、打开的桌面及人工租约；不读取网页或凭据、不排队模式切换。兼容 `enableAutomation:false`，传 `true` 返回400。返回 `status:"bound",verificationSource:"manual_confirmation"`。相同幂等键重试保留该次结果；新的确认请求更新时间。旧自动检测结果保存在历史字段中。启用自动化需在实例设置单独操作。
+- `POST /api/v1/profiles/{id}/google-login/check`：已移除，返回 `410 ACCOUNT_CHECK_REMOVED`。
 - `GET /api/v1/manual-sessions`：返回本人有效人工桌面会话与进度，和持久账号确认独立。
 - `GET /api/v1/profiles`：彻底清理后含 `purgedAt` 的记录不再进入列表、总数与归档计数；真正仍保留数据的归档实例继续显示。清理审计元数据可保留，不代表浏览器容器或目录仍存在。
 
-自动化兼容模式保留原分步填写和自动身份检测，`autofill.stage/message` 仅含固定阶段提示、无密码。VNC模式不执行这些动作，也不会在后台轮询页面。详细操作和清单导入见[会话恢复说明](session-recovery.md#google-人工登录与实例绑定)。
+两种模式均不执行 Google 自动填写、页面身份读取或轮询。详细操作和清单导入见[会话恢复说明](session-recovery.md#google-人工登录与实例绑定)。
 
 ## 注册声明式模板
 
 `POST /api/v1/templates` 需要 manage 权限，接收 `name`、`steps`、`timeoutMs` 和 `parametersSchema`。参数 schema 为字段名到 `{type:"string"|"number"|"boolean",required:boolean}` 的映射。步骤中的 `{{field}}` 以已校验参数作字符串替换；不支持脚本、shell 或 eval。`GET /templates` 查询模板；`POST /jobs` 可传 `{profileId,templateId,parameters,expectedAccountId?}`，仍进入同一队列与租约。
 
-账号相关任务应传 `expectedAccountId`。执行前按注册检测器验证页面身份；未验证则进入 waiting_for_human。普通不涉及账号的导航/提取可以不指定账号；仅绑定一个别名不表示已取得可信身份检测能力。
+账号相关任务应传 `expectedAccountId`。执行前仅检查该实例的人工确认记录；尚未人工确认则进入 waiting_for_human，用户在实例详情确认并结束人工桌面后恢复任务。这是用户声明的前置条件，不证明网站当前会话有效。普通导航/提取可以不指定账号。
 
 ## Chrome 分发与镜像准备
 
 `POST /updates/check` 可传 `{distribution:"google"|"cft",prepare:true}`，从对应官方源发现版本、构建镜像并运行一次性持久性兼容验证。自动模式会准备候选；manual/notify模式可显式传 prepare。只有已验证的镜像才能 apply。创建 `distribution:"cft"` 实例前须先准备CfT，缺失时返回 `DISTRIBUTION_NOT_PREPARED`，不会悄悄改用 Google Chrome 或 Chromium。
 
-Cookie/站点状态导入默认 merge；replace 与 replace_domains 均要求明确 domains，只有所选域及其子域被替换。没有 domains 时拒绝替换。Chrome可能对公共后缀和字段实施额外限制；预检与实际逐项应用结果以任务结果为准。导入后仍需要账号身份检测。
+Cookie/站点状态导入默认 merge；replace 与 replace_domains 均要求明确 domains，只有所选域及其子域被替换。没有 domains 时拒绝替换。Chrome可能对公共后缀和字段实施额外限制；预检与实际逐项应用结果以任务结果为准。导入后请在实例桌面自行核对登录情况，再保存人工确认。

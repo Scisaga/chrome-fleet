@@ -1,0 +1,26 @@
+.platform-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 20px; margin-top: 22px; }
+.platform-config .info-list dd { overflow-wrap: anywhere; min-width: 0; }
+.platform-config .heading-actions { margin-top: 18px; flex-wrap: wrap; }
+.platform-editor details { margin: 18px 0; }
+.platform-editor summary { font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+.platform-editor .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.platform-links-panel { margin-top: 20px; }
+.platform-account-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.platform-account-row:last-child { border-bottom: 0; }
+.platform-account-identity { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.platform-account-identity small { color: var(--muted); font-size: 12px; }
+.platform-account-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.platform-account-actions .button { padding: 7px 10px; font-size: 12px; }
+.platform-tags { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.platform-tags > span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.platform-tags .badge { font-size: 10px; padding: 3px 6px; }
+.badge.account_mismatch { color: #b44439; background: #fff0ed; }
+.account-manager-platforms { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 12px; }
+.account-manager-platforms > summary { cursor: pointer; color: var(--purple); font-weight: 500; }
+.account-manager-platforms .platform-account-row { padding-left: 10px; }
+@media (max-width: 700px) { .platform-editor .form-grid { grid-template-columns: 1fr; } .platform-account-row { flex-direction: column; } .platform-links-panel .panel-heading { flex-wrap: wrap; gap: 12px; } }
+
+.platform-addresses { font-size: 12px; overflow-wrap: anywhere; max-width: 100%; }
+.platform-addresses summary, .platform-history summary { cursor: pointer; color: var(--muted); }
+.platform-addresses p { text-align: left; }
+.platform-addresses span { user-select: all; }

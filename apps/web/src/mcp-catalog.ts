@@ -61,10 +61,9 @@ export const mcpGroups: readonly McpGroup[] = [
   },
   {
     id: "manual",
-    title: "人工接管与身份检测",
-    description: "申请受保护桌面租约，或在自动化模式下检测站点账号身份。",
+    title: "人工接管",
+    description: "申请受保护桌面租约，完成登录后在实例详情保存人工确认。",
     tools: [
-      { name: "accounts_check", description: "提交站点身份检测；Cookie 存在不代表已登录。", scope: "automate", mode: "automation" },
       { name: "manual_session_open", description: "申请限时人工租约，获取同一 Chrome 的受保护桌面入口。", scope: "automate", mode: "all" },
       { name: "manual_session_close", description: "结束人工接管、撤销桌面权限并释放租约。", scope: "automate", mode: "all" },
     ],

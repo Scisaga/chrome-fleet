@@ -2678,16 +2678,21 @@ td small {
   }
 }
 
-.desktop-session-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
+.desktop-session-panel {
   background: #f4f1fc;
   border: 1px solid #e5def4;
   border-radius: 8px;
   margin-bottom: 22px;
   color: #a08bc6;
+}
+.desktop-session-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+}
+.desktop-session-banner + .desktop-session-banner {
+  border-top: 1px solid #e5def4;
 }
 .desktop-session-banner > div {
   margin-right: auto;

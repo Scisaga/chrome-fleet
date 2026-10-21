@@ -11,7 +11,7 @@ test('management URLs load the SPA directly while APIs, desktop resources and mi
   const f = await fixture({ webRoot });
   try {
     const id = 'cf_00000000-0000-4000-8000-000000000001';
-    for (const path of ['/profiles', '/accounts', '/jobs?job=fixture', '/updates', '/guide', '/profiles/new?from=accounts&account=fixture', `/profiles/${id}/settings`, `/profiles/${id}/accounts`, '/unknown-management-page']) {
+    for (const path of ['/profiles', '/accounts', '/platforms', '/jobs?job=fixture', '/updates', '/guide', '/profiles/new?from=accounts&account=fixture', `/profiles/${id}/settings`, `/profiles/${id}/accounts`, '/unknown-management-page']) {
       const response = await f.request('GET', path, undefined, '');
       assert.equal(response.statusCode, 200, path);
       assert.match(response.headers['content-type']!, /text\/html/);

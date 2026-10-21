@@ -17,9 +17,13 @@ test('VNC health explicitly reports unavailable automation and rejects all brows
     assert.equal((await state.app.inject({method:'GET',url:'/health'})).statusCode,401);
     const health=(await state.app.inject({method:'GET',url:'/health',headers})).json();
     assert.equal(health.browserMode,'vnc');assert.equal(health.automationAvailable,false);assert.equal(health.ready,true);assert.equal(health.pages,0);assert.equal(health.activeDownloads,null);
-    for(const url of ['/execute','/cancel','/self-test','/cookies/export','/cookies/import','/storage-state/export','/storage-state/import','/accounts/google-identity','/accounts/google-login','/accounts/google-autofill','/accounts/check','/proxy/test']){
+    for(const url of ['/execute','/cancel','/self-test','/cookies/export','/cookies/import','/storage-state/export','/storage-state/import','/proxy/test']){
       const response=await state.app.inject({method:'POST',url,headers,payload:{fencingToken:1}});
       assert.equal(response.statusCode,409);assert.equal(response.json().code,'VNC_MODE_UNSUPPORTED');
+    }
+    for(const url of ['/accounts/google-identity','/accounts/google-login','/accounts/google-autofill','/accounts/check','/accounts/open-login']){
+      const response=await state.app.inject({method:'POST',url,headers,payload:{fencingToken:1}});
+      assert.equal(response.statusCode,410);assert.equal(response.json().code,'ACCOUNT_CHECK_REMOVED');
     }
     assert.equal(state.closes(),0);
   }finally{await state.app.close();}

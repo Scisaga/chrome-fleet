@@ -40,9 +40,10 @@
 | --- | --- |
 | 管理多个浏览器环境 | 独立 Chrome 实例、用户目录、代理和桌面密码，按需启动与空闲关闭 |
 | 方便地登录和使用账号 | 账号目录、邮箱和密码查看/复制、Google 账号绑定与人工登录确认；已确认账号直接打开桌面 |
+| 管理 Google 关联平台 | 维护平台地址，在实例详情登记账号 ID、昵称并人工确认登录；账号目录同步展示 |
 | 接入 AI 客户端 | Skill 引导部署或复用服务，自动配置 Codex / Claude Code 的 MCP 连接 |
 | 让 AI 操作指定账号 | MCP 按实例选择浏览器，执行导航、点击、表单填写、文本提取、截图及多步任务 |
-| 随时接手浏览器 | 新窗口或内嵌远程桌面，支持中文等 UTF-8 文本的双向剪贴板 |
+| 随时接手浏览器 | 新窗口或内嵌远程桌面，多条接管记录在同一面板用细线分隔，支持中文等 UTF-8 文本的双向剪贴板 |
 | 看清运行情况 | 宿主机与各实例的 CPU、内存用量，任务进度、执行结果和历史记录 |
 | 保留和恢复工作环境 | 加密会话导出、完整停机快照、升级前备份，以及旧镜像与快照配对回滚 |
 
@@ -79,7 +80,7 @@ Skill 目录：skills/chrome-fleet
 
 ### 账号管理
 
-集中查看邮箱、辅助邮箱、关联实例与登录确认状态。已确认登录的账号显示“打开桌面”，未确认账号保留登录入口。
+集中查看邮箱、辅助邮箱、关联实例与登录确认状态。已确认登录的账号显示“打开桌面”，未确认账号保留登录入口。人工确认后，确认按钮改为“更新登录确认”，用于重新核对后更新记录和时间。
 
 [![账号管理：示例邮箱、密码查看、登录状态与打开桌面操作](docs/images/screenshots/account-directory.png)](docs/images/screenshots/account-directory.png)
 
@@ -94,7 +95,7 @@ Skill 目录：skills/chrome-fleet
 
 ### 账号绑定与登录确认
 
-在实例页查看、复制已绑定邮箱和密码，进入桌面完成登录，再确认并启用自动化接管。
+在实例页查看、复制已绑定邮箱和密码，进入普通 Chrome 桌面完成登录，再保存人工确认。需要网页任务时，可在实例设置中单独启用自动化。
 
 [![实例账号状态：账号绑定、邮箱复制、遮挡密码和人工登录确认](docs/images/screenshots/account-login.png)](docs/images/screenshots/account-login.png)
 
@@ -143,10 +144,12 @@ sudo ./scripts/fleet doctor
 1. 在“账号管理”新增已有账号的邮箱、密码和选填辅助邮箱。
 2. 从该账号行点击“创建 Chrome 实例”，配置名称、代理及资源。
 3. 新实例默认使用普通 Chrome / VNC。打开 Google 登录桌面，人工完成登录和验证。
-4. 回到账号状态或账号管理，点击“确认已登录”。系统保存恢复点，使用原用户目录切换到自动化接管。
+4. 回到账号状态或账号管理，点击“确认已登录”。系统保存人工记录，浏览器模式和桌面会话保持不变。需要自动化时，在实例设置中单独切换；Google 可能要求重新验证登录。
 5. 日常使用时点击“打开桌面”，或通过 MCP 向这个实例提交网页任务。
 
 账号绑定、人工确认与网站实际登录状态分别记录。首次登录、验证码和二次验证需要人工完成；保留用户目录也不保证网站永远不要求重新登录。详细流程见[账号登录与会话恢复](docs/session-recovery.md#google-人工登录与实例绑定)。
+
+需要管理通过 Google 首次创建的平台账号时，先在“平台管理”配置平台地址，再到实例“账号状态”登记关联并人工确认。Bilibili、GitHub 的地址示例及操作说明见[关联平台与人工确认](docs/session-recovery.md#google-关联平台与人工确认)。
 
 ## 通过 MCP 让 AI 操作浏览器
 
@@ -161,7 +164,7 @@ MCP 已集成在管理服务中。使用 Streamable HTTP 时，直接填写以�
 
 如果客户端使用请求头配置，填写 `Authorization: Bearer <平台访问令牌>`。
 
-管理页面左侧的“MCP”提供服务地址复制、搜索以及 **6 类、35 个工具**的说明和权限标记。
+管理页面左侧的“MCP”提供服务地址复制、搜索以及 **6 类、34 个工具**的说明和权限标记。
 
 [![MCP 接入：服务地址、认证说明及工具目录](docs/images/screenshots/mcp-integration.png)](docs/images/screenshots/mcp-integration.png)
 
@@ -209,7 +212,7 @@ MCP 已集成在管理服务中。使用 Streamable HTTP 时，直接填写以�
 }
 ```
 
-需要在执行前检测目标账号身份时，为 `jobs_submit` 或单步网页工具增加 `expectedAccountId`，取目标实例的 `accounts[].id`。它与目录绑定中的 `googleBinding.accountId` 不同，不能互换；无法确认身份时，任务会等待人工处理。
+需要在执行前要求账号已人工确认时，为 `jobs_submit` 或单步网页工具增加 `expectedAccountId`，取目标实例的 `accounts[].id`。它与目录绑定中的 `googleBinding.accountId` 不同，不能互换；尚未人工确认时，任务会等待人工处理；系统不访问账户页面。
 
 ### 常用操作
 
@@ -282,7 +285,7 @@ python3 ~/.agents/skills/chrome-fleet/scripts/fleet_skill.py desktop --name chro
 | --- | --- | --- |
 | 管理界面 | React 19 · Vite 7 · TypeScript 5.9 | 账号、实例、远程桌面和任务管理 |
 | 控制服务 | Node.js 24 LTS · Fastify 5 | 身份认证、实例授权、任务编排与更新调度 |
-| AI 接入 | MCP SDK 1.32 · Streamable HTTP / stdio | 向 AI 提供 35 个工具，复用 REST 的权限和队列 |
+| AI 接入 | MCP SDK 1.32 · Streamable HTTP / stdio | 向 AI 提供 34 个工具，复用 REST 的权限和队列 |
 | 浏览器与桌面 | Chrome · Playwright 1.64 · noVNC | 普通 Chrome 人工桌面与自动化模式切换 |
 | 持久化 | SQLite WAL · AES-256-GCM | 保存任务状态、账号目录及加密凭据与备份 |
 | 运行与隔离 | Docker Compose · Linux x86_64 | 实例生命周期、独立用户目录与网络规则 |

@@ -29,6 +29,8 @@ import { Runner } from "./runner.js";
 import type { Config } from "./config.js";
 import type { Principal } from "./auth.js";
 import { GoogleAccounts } from "./google-accounts.js";
+import { Platforms } from "./platforms.js";
+import { accountView, manuallyConfirmed } from "./account-confirmation.js";
 import { metricsIntervalMs, metricsView, unavailableMetrics } from "./metrics.js";
 import { HostMetricsSampler } from "./host-metrics.js";
 export class FleetService {
@@ -36,6 +38,7 @@ export class FleetService {
   vault: Vault;
   runner: Runner;
   google: GoogleAccounts;
+  platforms: Platforms;
   hostMetrics = new HostMetricsSampler();
   active = new Set<string>();
   starts = new Map<string, Promise<Profile>>();
@@ -54,6 +57,7 @@ export class FleetService {
     this.vault = new Vault(config.root, config.keyFile);
     this.runner = new Runner(config.runnerUrl, config.runnerTokenFile);
     this.google = new GoogleAccounts(this);
+    this.platforms = new Platforms(this);
     for (const d of ["profiles", "artifacts", "backups", "tmp"])
       mkdirSync(join(config.root, d), { recursive: true, mode: 0o700 });
     if (!this.db.get("settings", "update-policy"))
@@ -96,10 +100,11 @@ export class FleetService {
       ...p,
       browserMode: this.browserMode(p),
       googleBinding: this.google.binding(p.id),
+      platformAccounts: this.platforms.accountViews(p.id),
       metrics: metricsView(p),
       accounts: this.db
         .list<any>("accounts")
-        .filter((a) => a.profileId === p.id),
+        .filter((a) => a.profileId === p.id).map(accountView),
       currentJob: this.db
         .list<Job>("jobs")
         .find(
@@ -135,7 +140,7 @@ export class FleetService {
       throw new FleetError("VNC_MODE_UNSUPPORTED", "当前为纯VNC模式，此操作需要先切换到自动化模式", 409);
   }
   private needsAutomation(kind: string) {
-    return ["automation", "accounts_check", "proxy_test", "cookies_export", "cookies_import", "storage-state_export", "storage-state_import"].includes(kind);
+    return ["automation", "proxy_test", "cookies_export", "cookies_import", "storage-state_export", "storage-state_import"].includes(kind);
   }
   syncNetworkPolicy(): Promise<boolean> {
     const synchronize = async () => {
@@ -357,10 +362,18 @@ export class FleetService {
       !b.expectedIdentity.trim()
     )
       throw new FleetError("INVALID_ACCOUNT", "须指定站点与期望账号身份");
-    if (b.provider.toLowerCase() === "google" && this.browserMode(this.profile(pid, false)) === "vnc") {
-      const catalog = this.google.catalogForEmail(b.expectedIdentity);
-      this.google.bind(pid, catalog.id, principal);
-      return this.db.list<any>("accounts").find(account => account.profileId === pid && account.provider === "google");
+    if (b.detector) throw new FleetError("ACCOUNT_CHECK_REMOVED", "不再支持账号检测规则，请使用人工确认", 410);
+    if (b.provider.toLowerCase() === "google") {
+      let catalog: any;
+      try { catalog = this.google.catalogForEmail(b.expectedIdentity); }
+      catch (error) { if (this.browserMode(this.profile(pid)) === "vnc") throw error; }
+      if (catalog) {
+        this.google.bind(pid, catalog.id, principal);
+        return accountView(this.db.list<any>("accounts").find(account => account.profileId === pid && account.provider === "google"));
+      }
+      const existing = this.db.list<any>("accounts").find(account => account.profileId === pid && account.provider?.toLowerCase() === "google" &&
+        account.expectedIdentity?.trim().toLowerCase() === b.expectedIdentity.trim().toLowerCase());
+      if (existing) return accountView(existing);
     }
     const a = {
       id: id("account"),
@@ -368,22 +381,16 @@ export class FleetService {
       provider: b.provider,
       alias: String(b.alias || b.expectedIdentity).slice(0, 128),
       expectedIdentity: b.expectedIdentity.slice(0, 256),
-      detector: b.detector,
       authState: "unknown",
       lastCheckedAt: null,
     };
-    if (b.detector) {
-      const u = new URL(b.detector.url);
-      if (!["http:", "https:"].includes(u.protocol))
-        throw new FleetError("INVALID_DETECTOR", "检测器网址只支持HTTP/HTTPS");
-      if (!b.detector.identityLocator)
-        throw new FleetError(
-          "INVALID_DETECTOR",
-          "检测器须提供 identityLocator",
-        );
-    }
     return this.db.transaction(() => {
-      if (b.provider.toLowerCase() === "google") this.google.assertAvailable(b.expectedIdentity, pid);
+      if (b.provider.toLowerCase() === "google") {
+        this.google.assertAvailable(b.expectedIdentity, pid);
+        let catalogId: string | undefined;
+        try { catalogId = this.google.catalogForEmail(b.expectedIdentity).id; } catch { /* Legacy bindings may have no catalog entry. */ }
+        this.platforms.assertGoogleBinding(pid, catalogId);
+      }
       return this.db.set("accounts", a.id, a);
     });
   }
@@ -405,6 +412,7 @@ export class FleetService {
     payload: any,
     principal: string,
   ): Job {
+    if (kind === "accounts_check") throw new FleetError("ACCOUNT_CHECK_REMOVED", "主动账号检测已移除，请在实例详情人工确认登录", 410);
     if (profileId !== "system") {
       const profile = this.profile(profileId, false);
       if (this.needsAutomation(kind)) this.requireAutomation(profile);
@@ -441,6 +449,8 @@ export class FleetService {
     token?: number,
     timeout = 120000,
   ): Promise<any> {
+    if (["/accounts/check", "/accounts/google-identity", "/accounts/google-login", "/accounts/google-autofill", "/accounts/open-login"].includes(path))
+      throw new FleetError("ACCOUNT_CHECK_REMOVED", "自动访问和识别账号的功能已移除，请在桌面登录后人工确认", 410);
     if (this.browserMode(p) === "vnc" && !["/health", "/fence", "/shutdown", "/cancel", "/vnc/reload", "/desktop/clipboard"].includes(path))
       this.requireAutomation(p);
     if (path === "/health") timeout = Math.min(timeout, 5000);
@@ -585,7 +595,6 @@ export class FleetService {
       p.remoteDesktop.appliedVersion = p.remoteDesktop.version;
       this.saveProfile(p);
       if (p.upgradeSnapshotId) {
-        await this.checkAccounts(p, token!);
         this.pendingProgress(p.upgradeUpdateId, p.id, "succeeded");
         delete p.upgradeUpdateId;
         p.lastUpgradeSnapshotId = p.upgradeSnapshotId;
@@ -1185,7 +1194,6 @@ export class FleetService {
                 ) < Date.now())),
         ))
         await this.revokeDesktop(s.profileId);
-      this.google.poll();
       for (const stored of this.db
         .list<Job>("jobs")
         .filter((j) => j.status === "queued")) {
@@ -1313,14 +1321,15 @@ export class FleetService {
     }, 15000);
     let result: any;
     try {
+      if (j.kind === "accounts_check") throw new FleetError("ACCOUNT_CHECK_REMOVED", "主动账号检测已移除，请在实例详情人工确认登录", 410);
       if (j.kind === "browser_mode") {
         const credential = this.db.get<any>("credentials", j.principal);
         const scopes = credential?.scopes || [], profiles = credential?.profiles || [];
         if (!credential || credential.revoked || (credential.expiresAt && Date.parse(credential.expiresAt) <= Date.now()) ||
-            !(scopes.includes("admin") || (scopes.includes("manage") && scopes.includes("automate"))) ||
+            !(scopes.includes("admin") || (scopes.includes("automate") && (j.kind !== "browser_mode" || scopes.includes("manage")))) ||
             !(profiles.includes("*") || profiles.includes(j.profileId)))
           throw new FleetError("SCOPE_DENIED", "浏览器模式切换授权已失效", 403);
-        if (j.payload.googleAccountId) {
+        if (j.kind === "browser_mode" && j.payload.googleAccountId) {
           const binding = this.google.binding(j.profileId);
           if (binding?.accountId !== j.payload.googleAccountId || binding?.confirmationState !== "confirmed")
             throw new FleetError("ACCOUNT_MISMATCH", "已确认的账号绑定已变化，请重新确认登录后接管", 409);
@@ -1433,11 +1442,6 @@ export class FleetService {
               this.saveProfile(restored);
             }
           }
-          break;
-        }
-        case "accounts_check": {
-          const p = await this.ensureStart(j.profileId, false, token);
-          result = await this.checkAccounts(p, token);
           break;
         }
         case "automation":
@@ -1599,44 +1603,18 @@ export class FleetService {
       }
     }
   }
-  async checkAccounts(p: Profile, token: number) {
-    const accounts = this.db
-      .list<any>("accounts")
-      .filter((a) => a.profileId === p.id)
-      .map((a) => ({
-        ...a,
-        verificationUrl: a.detector?.url,
-        identityLocator: a.detector?.identityLocator,
-      }));
-    const result = await this.agent(p, "/accounts/check", { accounts }, token);
-    const rows = result.accounts || result.results || result;
-    if (Array.isArray(rows))
-      for (const r of rows) {
-        const a = accounts.find((a) => a.id === (r.id || r.accountId));
-        if (a) {
-          a.authState = r.authState || r.status || r.state || "unknown";
-          a.lastCheckedAt = now();
-          a.evidence = r.evidence || r.evidenceSummary;
-          delete a.verificationUrl;
-          delete a.identityLocator;
-          this.db.set("accounts", a.id, a);
-        }
-      }
-    return result;
-  }
   async runAutomation(j: Job, token: number) {
-    const p = await this.ensureStart(j.profileId, false, token);
     const expectedId = j.payload.expectedAccountId;
     if (expectedId) {
-      await this.checkAccounts(p, token);
       const a = this.db.get<any>("accounts", expectedId);
-      if (!a || a.profileId !== p.id || a.authState !== "authenticated") {
+      if (!a || a.profileId !== j.profileId || !manuallyConfirmed(a)) {
         j.status = "waiting_for_human";
-        j.reason = "期望账号身份未验证，请人工登录并重新检测";
+        j.reason = "期望账号尚未人工确认，请在实例详情确认登录后继续任务";
         this.saveJob(j);
         return { waitingForHuman: true };
       }
     }
+    const p = await this.ensureStart(j.profileId, false, token);
     const results: any[] = [...(j.result?.results || [])];
     const started = Date.now() - (j.activeElapsedMs || 0);
     for (let i = j.completedSteps || 0; i < j.payload.steps.length; i++) {
@@ -1915,7 +1893,6 @@ export class FleetService {
             "候选镜像实际 Chrome 版本与目标版本不一致",
             409,
           );
-        await this.checkAccounts(p, token);
         r.phase = "succeeded";
         p.lastUpdateId = uid;
         this.saveProfile(p);

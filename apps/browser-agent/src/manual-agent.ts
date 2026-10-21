@@ -74,7 +74,9 @@ export function createManualAgent(options:ManualAgentOptions) {
   });
   app.post('/shutdown',async req=>{const body=TokenBody.strict().parse(req.body);return gate.run(body.fencingToken,async()=>{await closeBrowser();return{stopped:true};});});
   const unsupported=async()=>{throw new AgentError('VNC_MODE_UNSUPPORTED','此实例使用纯 VNC 浏览器；仅支持人工桌面和剪贴板，浏览器自动化功能不可用',409);};
-  for(const path of ['/execute','/cancel','/self-test','/cookies/export','/cookies/import','/storage-state/export','/storage-state/import','/accounts/google-identity','/accounts/google-login','/accounts/google-autofill','/accounts/check','/proxy/test'])app.post(path,unsupported);
+  for(const path of ['/execute','/cancel','/self-test','/cookies/export','/cookies/import','/storage-state/export','/storage-state/import','/proxy/test'])app.post(path,unsupported);
+  for(const path of ['/accounts/google-identity','/accounts/google-login','/accounts/google-autofill','/accounts/check','/accounts/open-login'])
+    app.post(path,async()=>{throw new AgentError('ACCOUNT_CHECK_REMOVED','账号自动访问及检测已移除，请在桌面登录后人工确认',410);});
   // Reject future automation paths too, rather than silently falling through.
   app.setNotFoundHandler((_req,reply)=>reply.code(409).send({code:'VNC_MODE_UNSUPPORTED',message:'纯 VNC 模式不提供此浏览器自动化接口'}));
   const shutdown=async()=>{await closeBrowser();await app.close();};

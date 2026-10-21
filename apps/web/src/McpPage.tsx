@@ -67,7 +67,7 @@ export default function McpPage({ origin, notify }: {
       <p className="mcp-connection-hint">使用项目 <code>secrets/admin-token</code> 中的令牌，在客户端填写。可访问的功能和实例由令牌权限决定。</p>
     </section>
 
-    <Notice>新建实例默认为 VNC。网页自动化、账号检测和会话导入导出，需要先在实例设置中切换为自动化模式。Google 账号绑定与人工登录确认仍在管理界面完成。</Notice>
+    <Notice>新建实例默认为 VNC。网页自动化和会话导入导出，需要先在实例设置中切换为自动化模式。Google 账号绑定与人工登录确认仍在管理界面完成。</Notice>
 
     <div className="mcp-catalog-toolbar">
       <div><h2>功能一览</h2><span>{query ? `找到 ${matchingCount} 个工具` : `${mcpGroups.length} 类功能 · ${toolCount} 个工具`}</span></div>

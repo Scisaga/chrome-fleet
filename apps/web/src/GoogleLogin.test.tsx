@@ -5,85 +5,33 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { GoogleLoginDialog, GoogleLoginProgress } from "./GoogleLogin";
 import { Badge } from "./components";
 import { browserMode } from "./browser-mode";
-import { googleAutofillSummary } from "./google-login-state";
 import { bindingProgress, googleBindingLabel } from "./google-binding";
 import VncGoogleBindingPanel from "./VncGoogleBindingPanel";
 import BrowserModeSettings from "./BrowserModeSettings";
 import type { GoogleLoginStatus, Profile } from "./api";
 
-function render(value: GoogleLoginStatus) {
-  return renderToStaticMarkup(<GoogleLoginProgress value={value} onCheck={() => {}} />);
-}
-
-test("unselected sessions explain how to enable assistance without promising credentials were filled", () => {
-  const html = render({ status: "waiting" });
-  assert.match(html, /未启用填写辅助/);
-  assert.match(html, /选择已导入账号/);
-  assert.match(html, /自行填写凭证/);
-  assert.doesNotMatch(html, /密码已填好/);
-});
-
-test("all allowed assistance stages render distinct actionable states", () => {
-  for (const stage of ["waiting", "email_filled", "email_submitted", "password_filled", "manual_required", "account_mismatch", "unsupported"] as const) {
-    const value = { status: "waiting" as const, autofill: { stage } };
-    const html = render(value);
-    assert.ok(html.includes(`data-autofill-stage="${stage}"`), stage);
-    assert.ok(html.includes(googleAutofillSummary(value).title), stage);
-    assert.match(html, /验证码与二次验证由你完成/);
-    assert.doesNotMatch(html, /<input|type="password"/);
-    assert.doesNotMatch(html, /系统(?:会|将)?点击邮箱页|填写(?:所选账号的)?邮箱并点击下一步|填写邮箱、点击下一步/);
-  }
-});
-
-test("filled email waits for the person to click Next before password assistance", () => {
-  const html = render({ status: "waiting", autofill: { stage: "email_filled" } });
-  assert.match(html, /邮箱已填好，请点击下一步/);
-  assert.match(html, /请在远程桌面的邮箱页点击下一步/);
-  assert.match(html, /检测进入密码页后会填写密码/);
-  assert.doesNotMatch(html, /密码已填好|系统将点击/);
-  const legacy = render({ status: "waiting", autofill: { stage: "email_submitted" } });
-  assert.match(legacy, /已检测到你提交邮箱/);
-  assert.doesNotMatch(legacy, /系统将点击|自动提交邮箱/);
-});
-
-test("filled passwords explicitly wait for the person to submit on the remote desktop", () => {
-  const html = render({ status: "waiting", autofill: { stage: "password_filled" } });
-  assert.match(html, /密码已填好，等待你提交/);
-  assert.match(html, /密码页确认后点击下一步/);
-  assert.match(html, /重新检测/);
-  assert.doesNotMatch(html, /已登录并绑定|自动提交密码/);
-});
-
-test("verified identity and mismatches take precedence over old assistance progress", () => {
-  const autofill = { stage: "password_filled" as const };
-  const bound = render({ status: "bound", autofill });
-  assert.match(bound, /Google 账号已识别并绑定/);
-  assert.doesNotMatch(bound, /等待你提交/);
-  const mismatch = render({ status: "mismatch", autofill });
-  assert.match(mismatch, /登录账号与所选账号不一致/);
-  assert.match(mismatch, /未覆盖账号绑定/);
-  assert.doesNotMatch(mismatch, /密码已填好/);
-});
-
 test("VNC waiting state shows the chosen email and explicit manual confirmation without DOM detection", () => {
   const html = renderToStaticMarkup(<GoogleLoginProgress
-    value={{ status: "waiting", browserMode: "vnc", expectedAccountId: "google_fixture", expectedEmail: "vnc-fixture@example.test", autofill: { stage: "password_filled" } }}
-    onCheck={() => {}} onConfirm={() => {}}
+    value={{ status: "waiting", browserMode: "vnc", expectedAccountId: "google_fixture", expectedEmail: "vnc-fixture@example.test" }}
+    onConfirm={() => {}}
   />);
   assert.match(html, /已绑定账号：vnc-fixture@example.test/);
   assert.match(html, /已绑定，待人工确认/);
   assert.match(html, /确认已登录/);
   assert.match(html, /无需重新打开桌面/);
-  assert.match(html, /切换到自动化接管/);
-  assert.match(html, /结束人工桌面/);
+  assert.match(html, /确认只保存人工记录/);
+  assert.match(html, /桌面会话保持不变/);
+  assert.doesNotMatch(html, /切换到自动化接管|结束人工桌面/);
   assert.doesNotMatch(html, /重新检测|data-autofill-stage|密码已填好|手动填写后识别|人工登录后自动识别/);
 });
 
 test("VNC confirmed mappings are explicitly a person's statement, never server verification", () => {
-  const html = renderToStaticMarkup(<GoogleLoginProgress value={{ status: "bound", browserMode: "vnc", verificationSource: "manual_confirmation", expectedEmail: "vnc-fixture@example.test", lastConfirmedAt: "2026-10-01T01:02:00.000Z" }} />);
+  const html = renderToStaticMarkup(<GoogleLoginProgress value={{ status: "bound", browserMode: "vnc", verificationSource: "manual_confirmation", expectedEmail: "vnc-fixture@example.test", lastConfirmedAt: "2026-10-01T01:02:00.000Z" }} onConfirm={() => {}} />);
   assert.match(html, /已人工确认登录/);
   assert.match(html, /人工确认时间/);
-  assert.match(html, /启用自动化接管/);
+  assert.match(html, /<button[^>]*class="button default [^"]*"[^>]*>更新登录确认<\/button>/);
+  assert.doesNotMatch(html, /<button[^>]*>确认已登录<\/button>/);
+  assert.match(html, /仅|人工确认|人工登录确认/);
   assert.doesNotMatch(html, /Google 账号已识别并绑定|已验证登录|重新检测|确认已登录并绑定/);
   assert.match(renderToStaticMarkup(<Badge value="manually_confirmed" />), /人工确认/);
 });
@@ -96,7 +44,8 @@ test("VNC Google dialog offers cancel and login without a duplicate desktop acti
   assert.match(html, /打开VNC登录/);
   assert.match(html, /已绑定账号/);
   assert.match(html, /vnc-fixture@example.test/);
-  assert.match(html, /确认登录后会结束人工桌面/);
+  assert.match(html, /确认登录只保存人工记录/);
+  assert.doesNotMatch(html, /确认登录后会结束人工桌面/);
   assert.doesNotMatch(html, /<select|待绑定 Google 账号/);
   assert.doesNotMatch(html, /手动填写后识别|系统会填写所选账号|由自动化模式检测身份|自动识别并绑定/);
   assert.doesNotMatch(html, /type="password"/);
@@ -119,7 +68,9 @@ test("a bound VNC profile exposes manual confirmation without a desktop session"
   const html = renderToStaticMarkup(<VncGoogleBindingPanel profile={profile} reload={async () => {}} notify={() => {}} onLogin={() => {}} onConfirm={() => {}} onOpenDesktop={() => {}} busy={false} confirming={false} />);
   assert.match(html, /确认已登录/);
   assert.match(html, /已绑定账号：vnc-fixture@example.test/);
-  assert.match(html, /使用原用户目录重启 Chrome/);
+  assert.match(html, /确认已登录只保存人工记录/);
+  assert.match(html, /浏览器模式和桌面会话保持不变/);
+  assert.doesNotMatch(html, /使用原用户目录重启 Chrome/);
   assert.doesNotMatch(html, /最近检测|待检测|检测登录状态|<select/);
 });
 
@@ -148,4 +99,11 @@ test("the mode selector names the active mode without offering an unchanged swit
     assert.ok(html.includes(`id="${hintId}"`));
     assert.match(html, /用户目录与账号映射会保留/);
   }
+});
+
+test("automation mode also renders manual confirmation without identity polling or autofill", () => {
+  const html = renderToStaticMarkup(<GoogleLoginProgress value={{ status: "waiting", browserMode: "automation", expectedAccountId: "google_fixture", expectedEmail: "fixture@example.test" }} onConfirm={() => {}} />);
+  assert.match(html, /确认已登录/);
+  assert.match(html, /人工记录/);
+  assert.doesNotMatch(html, /重新检测|自动填写|已识别/);
 });

@@ -39,7 +39,7 @@ export default function BrowserModeSettings({ profile, reload, notify }: {
         </Button>
       </div>
       <p className="browser-mode-settings__hint" id={hintId}>切换会结束人工会话，正常关闭 Chrome、保存加密快照，并使用同一镜像重新启动。用户目录与账号映射会保留。</p>
-      <Notice>{selected === "vnc" ? vncModeDescription : "自动化模式允许网页任务、账号检测及登录填写辅助。现有未标记模式的实例按自动化模式兼容。"}</Notice>
+      <Notice>{selected === "vnc" ? vncModeDescription : "自动化模式允许执行网页任务。Google 可能拒绝自动化浏览器中的重新登录；人工登录和验证请使用普通 Chrome（VNC 模式）。"}</Notice>
     </section>
   );
 }

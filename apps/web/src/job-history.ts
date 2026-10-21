@@ -12,7 +12,7 @@ export interface JobDensity {
 const kindNames: Record<string, string> = {
   automation: "浏览器自动化", start: "启动实例", stop: "关闭实例", restart: "重启实例",
   archive: "归档实例", browser_mode: "切换浏览器模式", proxy_test: "代理出口测试",
-  accounts_check: "账号身份检测", cookies_export: "导出 Cookies", cookies_import: "导入 Cookies",
+  accounts_check: "历史账号检测（已移除）", cookies_export: "导出 Cookies", cookies_import: "导入 Cookies",
   "storage-state_export": "导出站点状态", "storage-state_import": "导入站点状态",
   snapshot: "完整会话快照", restore: "恢复完整快照", update_check: "检查浏览器更新",
   update_apply: "受控浏览器更新", update_rollback: "浏览器回滚",

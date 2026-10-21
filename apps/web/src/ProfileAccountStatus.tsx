@@ -1,5 +1,6 @@
 import { date, type Profile } from "./api";
 import { Badge, Button, Icon } from "./components";
+import { browserMode } from "./browser-mode";
 
 export function ProfileAccountEntry({ profile, onOpen }: {
   profile: Profile;
@@ -44,8 +45,8 @@ export function ProfileConfirmationSummary({ profile, onOpenSettings }: {
         {confirmed && binding.lastConfirmedAt && <div><dt>人工确认时间</dt><dd>{date(binding.lastConfirmedAt)}</dd></div>}
       </dl>
       <p className="muted small">{confirmed
-        ? "已保存人工确认记录。下方的自动化检测结果与人工确认分别记录。"
-        : "尚未进行人工确认。请先在实例设置切换为 VNC 模式，在桌面完成登录后点击「确认已登录」。"}</p>
+        ? "已保存人工确认记录，请以此实例桌面中的实际登录情况为准。"
+        : "尚未进行人工确认。请在此实例桌面完成登录后点击「确认已登录」。"}</p>
       {!confirmed && !profile.archived && <div className="heading-actions"><Button icon="settings" onClick={onOpenSettings}>前往实例设置</Button></div>}
     </section>
   );

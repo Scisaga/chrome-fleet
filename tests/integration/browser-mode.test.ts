@@ -46,11 +46,11 @@ test('VNC rejects Playwright work before persisting a queue entry and keeps life
   const f = await fixture();
   try {
     const p = await vnc(f);
-    for (const kind of ['automation','accounts_check','proxy_test','cookies_export','cookies_import','storage-state_export','storage-state_import']) {
+    for (const kind of ['automation','proxy_test','cookies_export','cookies_import','storage-state_export','storage-state_import']) {
       assert.throws(() => f.service.submit(kind, p.id, {}, 'bootstrap'), (error: any) => error.code === 'VNC_MODE_UNSUPPORTED');
     }
     assert.equal(f.service.db.list('jobs').length, 0);
-    for (const [path, body] of [[`/api/v1/profiles/${p.id}/accounts/check`, {}], [`/api/v1/profiles/${p.id}/proxy/test`, {}], ['/api/v1/jobs', { profileId: p.id, steps: [{ action: 'pages' }] }]] as const) {
+    for (const [path, body] of [[`/api/v1/profiles/${p.id}/proxy/test`, {}], ['/api/v1/jobs', { profileId: p.id, steps: [{ action: 'pages' }] }]] as const) {
       assert.equal((await f.request('POST', path, body)).json().code, 'VNC_MODE_UNSUPPORTED');
     }
     await assert.rejects(f.service.agent(f.service.profile(p.id), '/cookies/export', {}), (error: any) => error.code === 'VNC_MODE_UNSUPPORTED');
@@ -171,7 +171,7 @@ test('interrupted mode-switch reconciliation preserves later human state and per
   } finally { await f.close(); }
 });
 
-test('VNC Google login stays manual until confirmation queues takeover and releases its desktop', async () => {
+test('Google login and confirmation stay manual while preserving the active desktop', async () => {
   const f = await fixture();
   try {
     const p = await vnc(f);
@@ -187,15 +187,15 @@ test('VNC Google login stays manual until confirmation queues takeover and relea
     assert.equal((await f.request('PUT', `/api/v1/profiles/${p.id}/google-binding`, { accountId: selected.id })).statusCode, 200);
     const opened = await f.request('POST', `/api/v1/profiles/${p.id}/google-login`, { accountId: selected.id });
     assert.equal(opened.statusCode, 201); assert.equal(opened.json().data.googleLogin.browserMode, 'vnc'); assert.equal(opened.json().data.googleLogin.autofill, undefined);
-    f.service.google.poll();
-    assert.equal((await f.request('POST', `/api/v1/profiles/${p.id}/google-login/check`, {})).json().data.status, 'waiting');
+    await f.service.tick();
+    assert.equal((await f.request('POST', `/api/v1/profiles/${p.id}/google-login/check`, {})).statusCode, 410);
     const path = `/api/v1/profiles/${p.id}/google-login/confirm`;
     assert.equal((await f.request('POST', path, { accountId: other.id })).json().code, 'ACCOUNT_MISMATCH');
     const manager = f.auth.issue(['manage','automate'], [p.id], expires());
     assert.equal((await f.request('POST', path, { accountId: selected.id }, manager.token)).json().code, 'SCOPE_DENIED');
     const stranger = f.auth.issue(['admin'], [p.id], expires());
     assert.equal((await f.request('POST', path, { accountId: selected.id }, stranger.token)).statusCode, 200);
-    assert.equal(f.service.db.get<any>('manual-sessions', opened.json().data.id).closed, true, 'administrator confirmation must release the desktop for takeover');
+    assert.equal(f.service.db.get<any>('manual-sessions', opened.json().data.id).closed, false, 'confirmation must preserve the desktop');
     const login = await f.request('POST', '/api/v1/session', { token: fixtureToken }, '');
     const cookie = login.cookies.find(value => value.name === 'fleet_session')!;
     const headers = { cookie: `fleet_session=${cookie.value}`, origin: 'http://127.0.0.1:8080' };
@@ -204,8 +204,8 @@ test('VNC Google login stays manual until confirmation queues takeover and relea
     assert.equal((await f.request('POST', path, { accountId: selected.id }, outside.token)).json().code, 'PROFILE_DENIED');
     const confirmed = await f.request('POST', path, { accountId: selected.id });
     assert.equal(confirmed.statusCode, 200); assert.equal(confirmed.json().data.status, 'bound'); assert.equal(confirmed.json().data.verificationSource, 'manual_confirmation');
-    assert.ok(confirmed.json().data.takeoverJobId);
-    assert.equal(f.service.db.list<any>('jobs').filter(job => job.kind === 'browser_mode').length, 1);
+    assert.equal(confirmed.json().data.takeoverJobId, undefined);
+    assert.equal(f.service.db.list<any>('jobs').filter(job => job.kind === 'browser_mode').length, 0);
     const record = f.service.db.list<any>('accounts')[0];
     assert.equal(record.authState, 'manually_confirmed'); assert.equal(record.bindingSource, 'manual_confirmation'); assert.equal(record.expectedIdentity, selected.email);
     assert.equal(record.lastCheckedAt, null);

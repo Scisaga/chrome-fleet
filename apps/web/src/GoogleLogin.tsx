@@ -9,7 +9,6 @@ import {
   type Profile,
 } from "./api";
 import { Button, Field, Icon, Modal, Notice } from "./components";
-import { googleAutofillSummary } from "./google-login-state";
 import { browserMode, vncModeDescription, type BrowserMode } from "./browser-mode";
 
 export function GoogleMark() {
@@ -90,7 +89,7 @@ export function GoogleAccountPicker({
     <div className="google-account-picker">
       <Field
         label="待绑定 Google 账号"
-        hint={mode === "vnc" ? "每个账号只能关联一个 Chrome 实例。保存绑定仅记录映射，不表示已经登录。" : "每个账号只能关联一个 Chrome 实例；已关联其他实例的账号不可选。"}
+        hint="每个账号只能关联一个 Chrome 实例。保存绑定仅记录映射，不表示已经登录。"
       >
         <select
           value={value}
@@ -98,7 +97,7 @@ export function GoogleAccountPicker({
           disabled={loading}
         >
           <option value="">
-            {loading ? "正在读取账号清单…" : mode === "vnc" ? "请选择要绑定的账号" : "不指定 · 自行登录"}
+            {loading ? "正在读取账号清单…" : "请选择要绑定的账号"}
           </option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id} disabled={account.bindings?.some(binding => binding.profileId !== profileId)}>
@@ -137,146 +136,38 @@ export function GoogleAccountPicker({
   );
 }
 
-export function GoogleLoginProgress({
-  value,
-  busy,
-  onCheck,
-  mode,
-  onConfirm,
-  confirmBusy,
-}: {
+export function GoogleLoginProgress({ value, mode, onConfirm, confirmBusy }: {
   value: GoogleLoginStatus;
   busy?: boolean;
-  onCheck?: () => void;
   mode?: BrowserMode;
   onConfirm?: () => void;
   confirmBusy?: boolean;
 }) {
-  const vnc = (mode || value.browserMode) === "vnc";
-  const manuallyConfirmed = value.verificationSource === "manual_confirmation";
-  const canConfirm = vnc && value.expectedEmail && onConfirm;
-  const autofill = googleAutofillSummary(value);
-  const title = manuallyConfirmed && value.status === "bound"
-    ? "已人工确认登录"
-    : vnc ? "已绑定，待人工确认"
-    : (value.status === "waiting" || value.status === "unknown")
-    ? autofill.title
-    : {
-    waiting: "等待 Google 登录与账号识别",
-    bound: "Google 账号已识别并绑定",
-    mismatch: "登录账号与所选账号不一致",
-    unknown: "尚未识别出 Google 账号",
-    }[value.status];
-  return (
-    <div
-      className={`google-login-progress ${value.status}`}
-      role="status"
-      aria-live="polite"
-    >
-      <div className={`google-login-progress-summary${canConfirm ? " has-actions" : ""}`}>
-        <div className="google-login-progress-copy">
-          <div className="google-login-progress-title">
-            <Icon
-              name={
-                value.status === "bound"
-                  ? "check"
-                  : value.status === "mismatch"
-                    ? "alert"
-                    : "clock"
-              }
-              size={17}
-            />
-            <strong>{title}</strong>
-            {!vnc && onCheck && <Button type="button" variant="ghost" busy={busy} onClick={onCheck}>
-              重新检测
-            </Button>}
-          </div>
-          {(value.expectedEmail || value.detectedEmail) && (
-            <div className="google-login-identities">
-              {value.expectedEmail && <span>{vnc || manuallyConfirmed ? "已绑定账号" : "待绑定"}：{value.expectedEmail}</span>}
-              {value.detectedEmail && !manuallyConfirmed && <span>已识别：{value.detectedEmail}</span>}
-            </div>
-          )}
-          {!vnc && (value.status === "waiting" || value.status === "unknown") && (
-            <p className="google-login-autofill" data-autofill-stage={autofill.stage}>
-              {autofill.description}
-              {value.autofill?.message && <> {value.autofill.message}</>}
-            </p>
-          )}
-          {vnc || manuallyConfirmed ? <p>
-            {manuallyConfirmed ? "已记录人工登录确认。启用自动化接管后可执行网页任务，并按设置自动关闭空闲实例。" : "请先在 VNC 桌面完成上述邮箱的登录，再点击「确认已登录」切换到自动化接管，无需重新打开桌面。确认后会结束人工桌面，保留用户目录并重启 Chrome。"}
-          </p> : value.message && <p>{value.message}</p>}
-          {manuallyConfirmed && value.lastConfirmedAt && <p>人工确认时间：{date(value.lastConfirmedAt)}</p>}
-          {vnc && !value.expectedAccountId && <p>尚未绑定账号。请先在账号状态页保存目录账号绑定；普通桌面入口保持可用。</p>}
-          {!vnc && value.status === "mismatch" && (
-            <p>
-              未覆盖账号绑定。请在该实例的 Chrome 中切换到所选账号，再重新检测。
-            </p>
-          )}
-          {!vnc && value.status !== "bound" && (
-            <p>
-              密码页提交、验证码与二次验证由你完成。登录成功后打开 Google
-              首页或「我的账号」，让已登录头像可供识别。
-            </p>
-          )}
-        </div>
-        {canConfirm && (
-          <div className="google-login-progress-actions">
-            <Button type="button" variant="primary" busy={confirmBusy} onClick={onConfirm}>{manuallyConfirmed ? "启用自动化接管" : "确认已登录"}</Button>
-          </div>
-        )}
+  const confirmed = value.verificationSource === "manual_confirmation" && value.status === "bound";
+  return <div className={`google-login-progress ${confirmed ? "bound" : "waiting"}`} role="status" aria-live="polite">
+    <div className={`google-login-progress-summary${value.expectedEmail && onConfirm ? " has-actions" : ""}`}>
+      <div className="google-login-progress-copy">
+        <div className="google-login-progress-title"><Icon name={confirmed ? "check" : "clock"} size={17} /><strong>{confirmed ? "已人工确认登录" : "已绑定，待人工确认"}</strong></div>
+        {value.expectedEmail && <div className="google-login-identities"><span>已绑定账号：{value.expectedEmail}</span></div>}
+        <p>{confirmed ? "已记录人工登录确认。请以此实例桌面中的实际登录情况为准。" : "请先在此实例桌面完成登录并核对邮箱，再点击「确认已登录」，无需重新打开桌面。"}确认只保存人工记录，浏览器模式和桌面会话保持不变。</p>
+        {confirmed && value.lastConfirmedAt && <p>人工确认时间：{date(value.lastConfirmedAt)}</p>}
+        {!value.expectedAccountId && <p>尚未绑定账号。请先在账号状态页保存目录账号绑定。</p>}
       </div>
+      {value.expectedEmail && onConfirm && <div className="google-login-progress-actions"><Button type="button" variant={confirmed ? "default" : "primary"} busy={confirmBusy} onClick={onConfirm}>{confirmed ? "更新登录确认" : "确认已登录"}</Button></div>}
     </div>
-  );
+  </div>;
 }
 
-export function GoogleLoginDialog({
-  profile,
-  onClose,
-  onStart,
-}: {
+export function GoogleLoginDialog({ profile, onClose, onStart }: {
   profile: Profile;
   onClose: () => void;
   onStart: (accountId?: string) => void;
 }) {
-  const [accountId, setAccountId] = useState("");
-  const mode = browserMode(profile);
-  const vnc = mode === "vnc";
-  return (
-    <Modal
-      title="Google 登录"
-      subtitle={`目标实例：${profile.name}`}
-      onClose={onClose}
-    >
-      <Notice>
-        {vnc ? "只打开此 Chrome 已绑定账号的 VNC 桌面。请自行完成 Google 登录，之后可在账号状态页或账号目录直接确认已登录。" : "将导航当前实例的同一个 Chrome 到 Google 登录页面，并打开受保护远程桌面。此为自动化模式的兼容功能。"}
-      </Notice>
-      {vnc ? <div className="google-login-fixed-account"><strong>已绑定账号</strong><p>{profile.googleBinding?.email || "尚未绑定，请先到账号状态页保存绑定。"}</p></div> : <GoogleAccountPicker
-        profileId={profile.id}
-        value={accountId}
-        onChange={setAccountId}
-        mode={mode}
-      />}
-      <p className="google-login-guidance">
-        {vnc ? vncModeDescription : accountId
-          ? "系统会填写所选账号的邮箱，等待你点击邮箱页的下一步；检测进入密码页后自动填写密码，再由你确认提交。验证码与二次验证由你完成。密码仅在目标 Chrome 中填写，不会传到管理界面。"
-          : "选择已导入账号可自动填写邮箱；邮箱页下一步由你点击，检测进入密码页后系统再填写密码。不指定账号时自行填写凭证。密码提交、验证码与二次验证由你完成。"}
-        {vnc ? " 确认登录后会结束人工桌面，保留原用户目录并重启 Chrome，切换到自动化接管。换账号请先在账号状态页明确换绑。" : " 登录后可打开 Google 首页或「我的账号」，由自动化模式检测身份。"}
-      </p>
-      <div className="modal-actions">
-        <Button type="button" onClick={onClose}>
-          取消
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          disabled={vnc && !profile.googleBinding}
-          onClick={() => onStart(vnc ? profile.googleBinding?.accountId : accountId || undefined)}
-        >
-          <GoogleMark />
-          {vnc ? "打开VNC登录" : "Google 登录"}
-        </Button>
-      </div>
-    </Modal>
-  );
+  const vnc = browserMode(profile) === "vnc";
+  return <Modal title="Google 登录" subtitle={`目标实例：${profile.name}`} onClose={onClose}>
+    <Notice>打开此实例的桌面后，请自行访问 Google 登录页并完成登录，再保存人工确认。</Notice>
+    <div className="google-login-fixed-account"><strong>已绑定账号</strong><p>{profile.googleBinding?.email || "尚未绑定，请先到账号状态页保存绑定。"}</p></div>
+    <p className="google-login-guidance">登录地址：https://accounts.google.com/ 。请在此实例桌面中的 Chrome 打开。确认登录只保存人工记录，浏览器模式和桌面会话保持不变。</p>
+    <div className="modal-actions"><Button type="button" onClick={onClose}>取消</Button><Button type="button" variant="primary" disabled={!profile.googleBinding} onClick={() => onStart(profile.googleBinding?.accountId)}><GoogleMark />{vnc ? "打开VNC登录" : "打开登录桌面"}</Button></div>
+  </Modal>;
 }

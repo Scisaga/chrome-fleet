@@ -20,8 +20,8 @@ test("the user catalog matches every registered MCP tool and its actual scope", 
     const displayed = mcpGroups.flatMap((group) => group.tools);
     assert.equal(mcpGroups.length, 6);
     assert.equal(new Set(mcpGroups.map((group) => group.id)).size, 6);
-    assert.equal(displayed.length, 35);
-    assert.equal(new Set(displayed.map((tool) => tool.name)).size, 35);
+    assert.equal(displayed.length, 34);
+    assert.equal(new Set(displayed.map((tool) => tool.name)).size, 34);
     assert.deepEqual(
       displayed.map((tool) => tool.name).sort(),
       registered.map((tool) => tool.name).sort(),
@@ -41,7 +41,7 @@ test("the user catalog matches every registered MCP tool and its actual scope", 
 test("the catalog separates VNC-safe management from automation and deferred upgrades", () => {
   const tools = new Map(mcpGroups.flatMap((group) => group.tools).map((tool) => [tool.name, tool]));
   const automationOnly = [
-    "profiles_proxy_test", "accounts_check", "jobs_submit",
+    "profiles_proxy_test", "jobs_submit",
     "browser_pages_list", "browser_navigate", "browser_click", "browser_fill", "browser_extract", "browser_screenshot",
     "cookies_export", "cookies_import", "storage_state_export", "storage_state_import",
   ];

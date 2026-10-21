@@ -1,6 +1,6 @@
 # MCP HTTP 连接
 
-管理界面左侧的「MCP」菜单打开 `/integrations/mcp`，提供当前HTTP地址复制、六类35个工具的用途和权限说明，并支持按功能或工具名搜索。每项工具标记通用、自动化模式或按模式处理；目录通过测试与服务端实际注册的工具名称及权限逐项对照。`/integrations/mcp` 为管理页面，`/mcp` 继续作为协议入口。
+管理界面左侧的「MCP」菜单打开 `/integrations/mcp`，提供当前HTTP地址复制、六类34个工具的用途和权限说明，并支持按功能或工具名搜索。每项工具标记通用、自动化模式或按模式处理；目录通过测试与服务端实际注册的工具名称及权限逐项对照。`/integrations/mcp` 为管理页面，`/mcp` 继续作为协议入口。
 
 MCP 已集成在 Chrome Fleet 控制服务中。客户端选择 **Streamable HTTP**，连接 **管理页面地址加 `/mcp`**，使用平台访问令牌进行 **Bearer** 鉴权；不需要另外启动 MCP 服务或执行 Docker 命令。
 
@@ -60,7 +60,7 @@ await client.close();
 | --- | --- | --- |
 | `profiles_list`, `profiles_get`, `profiles_proxy_get` | `read` | 分页实例、详情及脱敏配置 |
 | `profiles_create`, `profiles_start`, `profiles_stop`, `profiles_restart`, `profiles_runtime_policy_set`, `profiles_proxy_set`, `profiles_vnc_password_set` | `manage` | 配置或异步生命周期任务 |
-| `profiles_proxy_test`, `accounts_check`, `manual_session_open`, `manual_session_close` | `automate` | 真实浏览器检测或人工租约 |
+| `profiles_proxy_test`, `manual_session_open`, `manual_session_close` | `automate` | 代理连通测试或人工租约 |
 | `jobs_submit`, `jobs_cancel`, `jobs_resume` | `automate` | 队列操作 |
 | `jobs_get` | `read` | 进度、结果与失败摘要 |
 | `browser_pages_list`, `browser_navigate`, `browser_click`, `browser_fill`, `browser_extract`, `browser_screenshot` | `automate` | 同一队列返回 jobId |
@@ -72,9 +72,9 @@ await client.close();
 
 所有工具有严格参数 schema、输出 schema 和 `readOnlyHint/destructiveHint/idempotentHint/openWorldHint`。成功返回 `structuredContent: {ok:true,data,requestId}`；业务错误返回 `isError:true` 与 `{ok:false,error:{code,message},requestId?}`。错误消息不回显参数、凭证或控制服务原始异常。
 
-账号相关的单步工具同样可传 `expectedAccountId`，控制平面先校验期望身份，再执行网页动作。浏览器定位器恰好选择一种 `css`、`role`（可加 `name`）、`label`、`text`，可指定 `iframe`；不是任意脚本执行入口。`browser_fill` 不用于传递真实网站密码；管理界面选择导入账号后的Google分步填写走独立受限流程，密码提交、验证码与2FA仍在人工桌面完成。代理和 VNC 写入只接收已授权的 `secretRef`，不要求助手索取密码。create 时平台生成的 VNC 密码同样被 MCP 隐去，受保护桌面可自动认证，管理员也可在实例设置查看或修改。截图、页面文本与 artifact 仍可能敏感，调用前须获得相应权限。
+账号相关的单步工具同样可传 `expectedAccountId`，控制平面先要求该账号具有人工确认记录，再执行网页动作；不访问账号页面。浏览器定位器恰好选择一种 `css`、`role`（可加 `name`）、`label`、`text`，可指定 `iframe`；不是任意脚本执行入口。`browser_fill` 不用于传递真实网站密码；网站邮箱、密码及验证均由用户在实例桌面中自行完成。代理和 VNC 写入只接收已授权的 `secretRef`，不要求助手索取密码。create 时平台生成的 VNC 密码同样被 MCP 隐去，受保护桌面可自动认证，管理员也可在实例设置查看或修改。截图、页面文本与 artifact 仍可能敏感，调用前须获得相应权限。
 
-`waiting_for_human` 时使用 `manual_session_open`，在同一浏览器完成验证并关闭人工会话后，再检测身份及 `jobs_resume`。`outcome_unknown` 先核查外部页面实际结果，不重复提交。
+`waiting_for_human` 时使用 `manual_session_open`，在同一浏览器完成验证并关闭人工会话后，在实例详情保存人工确认，再通过 `jobs_resume` 恢复。`outcome_unknown` 先核查外部页面实际结果，不重复提交。
 
 ## 可选 stdio 客户端
 
@@ -109,4 +109,6 @@ npm run test -w @chrome-fleet/mcp-bridge
 node --import tsx --test tests/integration/origins.test.ts
 ```
 
-自动测试覆盖官方客户端两种传输、35 个工具、队列映射、密码字段拒绝、敏感输出脱敏、精确 LAN/WireGuard/loopback Host-Origin 配对、桌面 WebSocket 授权和凭证即时撤销；不访问真实 Google 账号。
+自动测试覆盖官方客户端两种传输、34 个工具、队列映射、密码字段拒绝、敏感输出脱敏、精确 LAN/WireGuard/loopback Host-Origin 配对、桌面 WebSocket 授权和凭证即时撤销；不访问真实 Google 账号。
+
+账号自动检测工具 `accounts_check` 已移除。Google 与关联平台均由用户在管理界面人工确认；关联平台确认位于实例详情。

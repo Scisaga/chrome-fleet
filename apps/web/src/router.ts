@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type View = "profiles" | "accounts" | "jobs" | "updates" | "guide" | "mcp";
+export type View = "profiles" | "accounts" | "platforms" | "jobs" | "updates" | "guide" | "mcp";
 export type DetailTab =
   | "overview"
   | "settings"
@@ -15,7 +15,7 @@ export type AppRoute =
   | { kind: "not-found"; path: string };
 
 const profileIdPattern = /^cf_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const views: View[] = ["profiles", "accounts", "jobs", "updates", "guide"];
+const views: View[] = ["profiles", "accounts", "platforms", "jobs", "updates", "guide"];
 const detailTabs: DetailTab[] = [
   "overview", "settings", "accounts", "tasks", "sessions", "updates",
 ];

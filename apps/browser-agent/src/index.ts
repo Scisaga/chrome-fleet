@@ -10,8 +10,6 @@ import { basename, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { z } from 'zod';
 import { AgentError, CookieSchema, domainMatches, FenceGate, IndexedDbSchema, parseCookies, StepSchema, type LocatorSpec, type Step } from './model.js';
-import { readGoogleIdentity } from './google-identity.js';
-import { GoogleAutofill } from './google-autofill.js';
 import { X11Clipboard, validClipboardText } from './x11-clipboard.js';
 import { NativeBrowser } from './native-browser.js';
 import { createManualAgent } from './manual-agent.js';
@@ -107,8 +105,6 @@ export async function startAgent() {
   let active: Page = context.pages()[0] ?? await context.newPage();
   let closed = false;
   let executingPage:Page|undefined;
-  let googleLoginPage:Page|undefined;
-  const googleAutofill=new GoogleAutofill();
   const desktopClipboard=new X11Clipboard();
   const gate = new FenceGate(async()=>{
     if(executingPage){const previous=executingPage;await previous.close({runBeforeUnload:false}).catch(()=>undefined);if(active===previous)active=context.pages()[0]??await context.newPage();}
@@ -258,7 +254,7 @@ export async function startAgent() {
       try {
         if(body.mode!=='merge'){await context.clearCookies();await context.addCookies(retained);}
         for(let index=0;index<cookies.length;index++){failedIndex=index;gate.assert(body.fencingToken);await context.addCookies([cookies[index]!]);results[index]!.status='imported';}
-        return{imported:cookies.length,results,loginStatus:'unknown',message:'Cookie 写入成功，账号身份仍需站点检测',unsupported:[]};
+        return{imported:cookies.length,results,loginStatus:'unknown',message:'Cookie 写入成功，请在此实例桌面自行确认登录情况',unsupported:[]};
       }catch{
         if(failedIndex!==undefined&&results[failedIndex]!.status!=='imported')results[failedIndex]!.status='failed';
         let rollbackSucceeded=false;try{await context.clearCookies();await context.addCookies(before);rollbackSucceeded=true;}catch{}
@@ -305,37 +301,12 @@ export async function startAgent() {
         merged={cookies:[...cookies,...state.cookies],origins:[...origins,...imports] as typeof before.origins};
       }
       try{await context.setStorageState(merged);}catch{let rollbackSucceeded=false;try{await context.setStorageState(before);rollbackSucceeded=true;}catch{}throw new AgentError('STORAGE_IMPORT_FAILED',rollbackSucceeded?'站点状态导入失败，已恢复导入前状态':'站点状态导入及恢复失败，当前结果未知，请人工检查',409,{rollbackSucceeded,outcomeUnknown:!rollbackSucceeded});}
-      return{imported:true,cookies:state.cookies.length,origins:state.origins.length,loginStatus:'unknown',scope:['cookies','localStorage','indexedDB'],message:'已导入；页面请重新加载，登录状态仍需检测'};
+      return{imported:true,cookies:state.cookies.length,origins:state.origins.length,loginStatus:'unknown',scope:['cookies','localStorage','indexedDB'],message:'已导入；请在桌面自行确认登录状态'};
     });
   });
-  app.post('/accounts/google-identity',async req=>{
-    const body=TokenBody.strict().parse(req.body);
-    return gate.run(body.fencingToken,()=>readGoogleIdentity(context.pages()));
-  });
-  app.post('/accounts/google-login',async req=>{
-    const body=TokenBody.strict().parse(req.body);
-    return gate.run(body.fencingToken,async()=>{
-      const page=await context.newPage();active=page;googleLoginPage=page;
-      try{
-        await page.bringToFront();
-        const url='https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmyaccount.google.com%2F';
-        await guardUrl(url);
-        await page.goto(url,{timeout:15000,waitUntil:'domcontentloaded'});
-        return{opened:true,pageId:pageId(page)};
-      }catch(error){
-        throw new AgentError('GOOGLE_LOGIN_NAVIGATION_FAILED','Google 登录页暂未完成加载，浏览器窗口已保留，可通过桌面继续或重试',502,{opened:!page.isClosed(),pageId:pageId(page),retriable:true,networkCode:networkErrorCode(error)});
-      }
-    });
-  });
-  app.post('/accounts/google-autofill',async req=>{
-    const body=TokenBody.extend({email:z.string().trim().email().max(254),password:z.string().min(1).max(4096)}).strict().parse(req.body);
-    try{return await gate.run(body.fencingToken,async()=>{
-      const page=googleLoginPage;
-      executingPage=page;
-      try{return await googleAutofill.fill(page,body.email,body.password,()=>gate.assert(body.fencingToken));}
-      finally{executingPage=undefined;}
-    });}finally{body.password='';if(req.body&&typeof req.body==='object'&&'password' in req.body)(req.body as {password:string}).password='';}
-  });
+  for(const path of ['/accounts/check','/accounts/google-identity','/accounts/google-login','/accounts/google-autofill','/accounts/open-login']) {
+    app.post(path,async()=>{throw new AgentError('ACCOUNT_CHECK_REMOVED','账号自动访问及检测已移除，请在桌面登录后人工确认',410);});
+  }
   app.post('/desktop/clipboard',async req=>{
     const text=z.string().max(128*1024).refine(validClipboardText);
     const body=z.discriminatedUnion('action',[
@@ -346,36 +317,6 @@ export async function startAgent() {
       ? desktopClipboard.read(()=>gate.assert(body.fencingToken))
       : desktopClipboard.write(body.text,()=>gate.assert(body.fencingToken)));
     }finally{if(body.action==='write')body.text='';if(req.body&&typeof req.body==='object'&&'text' in req.body)(req.body as {text:string}).text='';}
-  });
-  app.post('/accounts/check',async req=>{
-    const body=TokenBody.extend({accounts:z.array(z.object({id:z.string().optional(),provider:z.string(),expectedIdentity:z.string().optional(),site:z.string().optional(),verificationUrl:z.string().url().optional(),identityLocator:LocatorSchemaOptional(),expectedText:z.string().optional(),detector:z.object({url:z.string().url(),identityLocator:LocatorSchemaOptional(),verificationLocator:LocatorSchemaOptional()}).optional()}).passthrough()).max(100)}).strict().parse(req.body);
-    return gate.run(body.fencingToken,async()=>{
-      const results=[];
-      for(const account of body.accounts){
-        gate.assert(body.fencingToken);
-        if(account.provider.toLowerCase()==='google'&&!account.verificationUrl&&!account.detector){
-          const google=await readGoogleIdentity(context.pages());
-          const matched=google.status==='authenticated'&&!!account.expectedIdentity&&google.identity===account.expectedIdentity.trim().toLowerCase();
-          results.push({id:account.id,provider:account.provider,status:google.status==='authenticated'?(matched?'authenticated':account.expectedIdentity?'needs_login':'unknown'):google.status,evidence:google.status==='authenticated'?(matched?'Google 已登录账号头像身份与预期一致':'Google 已登录账号身份与预期不一致，请人工检查'):google.reason,checkedAt:new Date().toISOString()});
-          continue;
-        }
-        const checkUrl=account.verificationUrl??account.detector?.url;const identityLocator=account.identityLocator??account.detector?.identityLocator;
-        if(!checkUrl||!identityLocator||!account.expectedIdentity){results.push({id:account.id,provider:account.provider,status:'unsupported',evidence:'此站点尚未配置验证页面与身份定位器'});continue;}
-        const page=await context.newPage();
-        try{
-          await guardUrl(checkUrl);
-          const response=await page.goto(checkUrl,{timeout:30000,waitUntil:'domcontentloaded'});
-          const human=await humanEvidence(page);
-          if(human){results.push({id:account.id,status:human.reason==='verification'?'needs_verification':'needs_login',evidence:human.message});continue;}
-          if(response&&[401,403].includes(response.status())){results.push({id:account.id,status:'needs_login',evidence:'验证站点拒绝当前会话'});continue;}
-          if(account.detector?.verificationLocator&&await locate(page,account.detector.verificationLocator).isVisible()){results.push({id:account.id,status:'needs_verification',evidence:'验证页面显示二次验证提示'});continue;}
-          const identity=await locate(page,identityLocator).innerText({timeout:5000});
-          const match=identity.trim()===(account.expectedText??account.expectedIdentity).trim();
-          results.push({id:account.id,status:match?'authenticated':'needs_login',evidence:match?'验证页面身份与预期一致':'验证页面身份与预期不一致',checkedAt:new Date().toISOString()});
-        }catch{results.push({id:account.id,status:'unknown',evidence:'验证页面不可达或未提供明确身份信息'});}finally{await page.close();}
-      }
-      return{accounts:results};
-    });
   });
   app.post('/proxy/test',async req=>{
     const body=TokenBody.parse(req.body);
@@ -399,9 +340,6 @@ export async function startAgent() {
   await app.listen({host:process.env.AGENT_HOST??'0.0.0.0',port:Number(process.env.AGENT_PORT??8092)});
   return{app,context,gate,shutdown};
 }
-
-// Reuse the strict locator contract without allowing JavaScript expressions.
-function LocatorSchemaOptional() { return z.object({css:z.string().optional(),role:z.string().optional(),name:z.string().optional(),label:z.string().optional(),text:z.string().optional(),iframe:z.string().optional()}).strict().refine(v=>[v.css,v.role,v.label,v.text].filter(Boolean).length===1).optional(); }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${resolve(process.argv[1])}`).href) {
   startAgent().catch(error=>{process.stderr.write(JSON.stringify(safeError(error))+'\n');process.exitCode=1;});

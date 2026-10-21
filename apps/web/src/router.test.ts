@@ -5,7 +5,7 @@ import { parseRoute, resolveRoute, routePath, type DetailTab, type View } from "
 const profileId = "cf_12345678-abcd-4321-9876-123456789abc";
 
 test("all global pages have stable, refreshable paths", () => {
-  for (const view of ["profiles", "accounts", "jobs", "updates", "guide", "mcp"] as View[]) {
+  for (const view of ["profiles", "accounts", "platforms", "jobs", "updates", "guide", "mcp"] as View[]) {
     const path = view === "mcp" ? "/integrations/mcp" : `/${view}`;
     const route = parseRoute({ pathname: path });
     assert.equal(route.kind, "page");

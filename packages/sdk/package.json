@@ -6,6 +6,7 @@
   "type": "module",
   "engines": { "node": ">=24 <25" },
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "dependencies": { "@chrome-fleet/contracts": "0.1.0" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",

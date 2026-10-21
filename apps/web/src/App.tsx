@@ -23,6 +23,9 @@ import {
 } from "./api";
 import AccountManager from "./AccountManager";
 import McpPage from "./McpPage";
+import PlatformsPage from "./PlatformsPage";
+import PlatformLinksPanel from "./PlatformLinksPanel";
+import { ProfilePlatformTags } from "./PlatformAccounts";
 import VncPasswordSettings from "./VncPasswordSettings";
 import BrowserModeSettings from "./BrowserModeSettings";
 import VncGoogleBindingPanel from "./VncGoogleBindingPanel";
@@ -38,7 +41,6 @@ import { resourceMetrics } from "./resource-metrics";
 import { bindingProgress, googleBindingLabel } from "./google-binding";
 import { browserMode, browserModeLabel, vncModeDescription, type BrowserMode } from "./browser-mode";
 import { routePath, useAppRoute, type View, type DetailTab } from "./router";
-import { googleAutofillSummary } from "./google-login-state";
 import {
   GoogleAccountPicker,
   GoogleLoginDialog,
@@ -282,6 +284,21 @@ export default function App() {
   const [actionId, setActionId] = useState("");
   const [desktopSessions, setDesktopSessions] = useState<DesktopSession[]>([]);
   useEffect(() => {
+    const refreshAccounts = () => { void load(true); };
+    const platformDesktop = (event: Event) => {
+      const session = (event as CustomEvent<DesktopSession & { message?: string }>).detail;
+      setDesktopSessions(current => [...current.filter(item => item.profileId !== session.profileId), session]);
+      if (!session.popup) setEmbeddedSession(session.id);
+      notify(session.message || "请在此实例桌面完成登录，再到实例详情人工确认。");
+    };
+    window.addEventListener("fleet-account-updated", refreshAccounts);
+    window.addEventListener("fleet-platform-desktop", platformDesktop);
+    return () => {
+      window.removeEventListener("fleet-account-updated", refreshAccounts);
+      window.removeEventListener("fleet-platform-desktop", platformDesktop);
+    };
+  }, [load, notify]);
+  useEffect(() => {
     if (session !== "authenticated") return;
     let disposed = false;
     const recover = async () => {
@@ -348,64 +365,19 @@ export default function App() {
       setActionId("");
     }
   }
-  async function checkGoogleLogin(profileId: string) {
-    if (browserMode(profiles.find((profile) => profile.id === profileId)) === "vnc") return;
-    if (googleChecking.includes(profileId)) return;
-    setGoogleChecking((current) => [...current, profileId]);
-    try {
-      const result = await api<
-        GoogleLoginStatus | { googleLogin: GoogleLoginStatus }
-      >(`/profiles/${profileId}/google-login/check`, "POST", {});
-      const googleLogin = "googleLogin" in result ? result.googleLogin : result;
-      setDesktopSessions((current) =>
-        current.map((session) =>
-          session.profileId === profileId
-            ? { ...session, googleLogin }
-            : session,
-        ),
-      );
-      await load(true);
-      if (googleLogin.status === "bound")
-        notify(
-          `已识别并绑定 Google 账号${googleLogin.detectedEmail ? `：${googleLogin.detectedEmail}` : ""}。`,
-        );
-    } catch (error) {
-      notify(message(error), true);
-    } finally {
-      setGoogleChecking((current) => current.filter((id) => id !== profileId));
-    }
-  }
   async function confirmGoogleLogin(profileId: string, accountId?: string) {
     if (!accountId || googleChecking.includes(profileId)) return;
     setGoogleChecking((current) => [...current, profileId]);
     try {
-      const googleLogin = await api<GoogleLoginStatus>(`/profiles/${profileId}/google-login/confirm`, "POST", { accountId });
-      desktopSessions.filter((session) => session.profileId === profileId).forEach((session) => session.popup?.close());
-      setDesktopSessions((current) => current.filter((session) => session.profileId !== profileId));
-      setEmbeddedSession(undefined);
+      const googleLogin = await api<GoogleLoginStatus>(`/profiles/${profileId}/google-login/confirm`, "POST", { accountId, enableAutomation: false });
+      setDesktopSessions((current) => current.map((session) => session.profileId === profileId ? { ...session, googleLogin } : session));
       await load(true);
-      if (googleLogin.takeoverJobId) {
-        notify("登录已确认，正在切换到自动化接管。桌面会结束，用户目录与账号绑定会保留。");
-        const deadline = Date.now() + 180000;
-        for (;;) {
-          const job = await api<Job>(`/jobs/${googleLogin.takeoverJobId}`);
-          if (job.status === "succeeded") break;
-          if (!["queued", "running"].includes(job.status || ""))
-            throw new Error(`自动化接管未完成：${job.error?.message || job.status}。可在任务中心查看详情。`);
-          if (Date.now() > deadline) {
-            notify("自动化接管仍在处理中，请在任务中心查看结果。");
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-      await load(true);
-      notify("已启用自动化接管，空闲自动关闭将按实例设置生效。");
+      notify("已记录人工登录确认，浏览器模式和桌面会话保持不变。需要自动化时，可在实例设置中单独启用。");
     } catch (error) { notify(message(error), true); }
     finally { setGoogleChecking((current) => current.filter((id) => id !== profileId)); }
   }
   function startGoogleLogin(profile: Profile, accountId?: string) {
-    if (browserMode(profile) === "vnc") {
+    {
       if (!profile.googleBinding) {
         setGoogleLoginTarget(undefined);
         navigateRoute({ kind: "profile", profileId: profile.id, tab: "accounts" });
@@ -456,19 +428,9 @@ export default function App() {
         ...current.filter((s) => s.profileId !== profile.id),
         { ...data, profileId: profile.id, desktopPath: path, popup },
       ]);
-      notify(
-        options?.googleLogin
-          ? browserMode(profile) === "vnc"
-            ? "已打开已绑定账号的 VNC 桌面。登录后可在账号状态或账号目录点击「确认已登录」，无需再次打开桌面。"
-            : data.googleLogin?.navigationStatus === "pending"
-            ? "Google页面尚未完成加载，已保留可自动连接的远程桌面。请检查此实例的网络和代理设置。"
-            : options.accountId
-              ? `远程桌面会自动连接。${googleAutofillSummary(data.googleLogin).title}。${googleAutofillSummary(data.googleLogin).description}`
-              : "已打开 Google 登录，远程桌面会自动连接。未选择已导入账号，请自行填写凭证并完成验证。"
-          : browserMode(profile) === "vnc"
-            ? "普通 Chrome 的 VNC 会话已开始，远程桌面会使用已保存的密码自动连接。"
-            : "人工会话已开始，远程桌面会使用已保存的密码自动连接。自动化将在会话结束后恢复。",
-      );
+      notify(options?.googleLogin
+        ? "已打开此实例的登录桌面。请自行访问 Google 登录页，完成登录后点击「确认已登录」。"
+        : "人工桌面会话已开始，远程桌面会使用已保存的密码自动连接。");
       await load(true);
     } catch (e) {
       if (!reusePopup) popup?.close();
@@ -511,6 +473,7 @@ export default function App() {
             [
               ["profiles", "grid", "浏览器实例"],
               ["accounts", "users", "账号管理"],
+              ["platforms", "layers", "平台管理"],
               ["jobs", "terminal", "任务中心"],
               ["updates", "refresh", "更新管理"],
               ["mcp", "mcp", "MCP"],
@@ -577,6 +540,8 @@ export default function App() {
                   ? "浏览器实例"
                   : view === "accounts"
                     ? "账号管理"
+                    : view === "platforms"
+                      ? "平台管理"
                     : view === "jobs"
                       ? "任务中心"
                       : view === "updates"
@@ -652,43 +617,46 @@ export default function App() {
                 }}
               />
             ))}
-          {desktopSessions.map((s) => (
-            <div className="desktop-session-banner" key={s.id}>
-              <Icon name="desktop" />
-              <div>
-                <strong>
-                  {profiles.find((p) => p.id === s.profileId)?.name || "浏览器"}{" "}
-                  · 人工接管中
-                </strong>
-                <small>{browserMode(profiles.find((profile) => profile.id === s.profileId)) === "vnc" ? "VNC 人工会话" : "自动化已暂停"} · 到期 {date(s.expiresAt)}</small>
-              </div>
-              <Button
-                onClick={() => {
-                  const profile = profiles.find((p) => p.id === s.profileId);
-                  if (profile) void openDesktop(profile);
-                }}
-              >
-                进入桌面
-                <Icon name="external" size={13} />
-              </Button>
-              <Button onClick={() => setEmbeddedSession(s.id)}>内嵌桌面</Button>
-              <Button onClick={() => void closeDesktop(s.id)}>
-                结束人工接管
-              </Button>
-              {s.googleLogin && (
-                <div className="google-session-status">
-                  <GoogleLoginProgress
-                    value={browserMode(profiles.find((profile) => profile.id === s.profileId)) === "vnc" && profiles.find((profile) => profile.id === s.profileId)?.googleBinding ? bindingProgress(profiles.find((profile) => profile.id === s.profileId)!.googleBinding!) : s.googleLogin}
-                    mode={s.googleLogin.browserMode || browserMode(profiles.find((profile) => profile.id === s.profileId))}
-                    busy={googleChecking.includes(s.profileId)}
-                    onCheck={() => void checkGoogleLogin(s.profileId)}
-                    confirmBusy={googleChecking.includes(s.profileId)}
-                    onConfirm={profiles.find((profile) => profile.id === s.profileId)?.googleBinding ? () => void confirmGoogleLogin(s.profileId, profiles.find((profile) => profile.id === s.profileId)?.googleBinding?.accountId) : undefined}
-                  />
+          {desktopSessions.length > 0 && (
+            <section className="desktop-session-panel" aria-label="人工接管信息">
+              {desktopSessions.map((s) => (
+                <div className="desktop-session-banner" key={s.id}>
+                  <Icon name="desktop" />
+                  <div>
+                    <strong>
+                      {profiles.find((p) => p.id === s.profileId)?.name || "浏览器"}{" "}
+                      · 人工接管中
+                    </strong>
+                    <small>{browserMode(profiles.find((profile) => profile.id === s.profileId)) === "vnc" ? "VNC 人工会话" : "自动化已暂停"} · 到期 {date(s.expiresAt)}</small>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      const profile = profiles.find((p) => p.id === s.profileId);
+                      if (profile) void openDesktop(profile);
+                    }}
+                  >
+                    进入桌面
+                    <Icon name="external" size={13} />
+                  </Button>
+                  <Button onClick={() => setEmbeddedSession(s.id)}>内嵌桌面</Button>
+                  <Button onClick={() => void closeDesktop(s.id)}>
+                    结束人工接管
+                  </Button>
+                  {s.googleLogin && (
+                    <div className="google-session-status">
+                      <GoogleLoginProgress
+                        value={profiles.find((profile) => profile.id === s.profileId)?.googleBinding ? bindingProgress(profiles.find((profile) => profile.id === s.profileId)!.googleBinding!) : s.googleLogin}
+                        mode={s.googleLogin.browserMode || browserMode(profiles.find((profile) => profile.id === s.profileId))}
+                        busy={googleChecking.includes(s.profileId)}
+                        confirmBusy={googleChecking.includes(s.profileId)}
+                        onConfirm={profiles.find((profile) => profile.id === s.profileId)?.googleBinding ? () => void confirmGoogleLogin(s.profileId, profiles.find((profile) => profile.id === s.profileId)?.googleBinding?.accountId) : undefined}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              ))}
+            </section>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               <Icon name="alert" />
@@ -722,12 +690,6 @@ export default function App() {
                 busy={actionId}
                 onGoogleLogin={(profile) => setGoogleLoginTarget(profile.id)}
                 onGoogleLoginStart={startGoogleLogin}
-                googleStatus={
-                  desktopSessions.find(
-                    (session) => session.profileId === profile.id,
-                  )?.googleLogin
-                }
-                onGoogleCheck={() => void checkGoogleLogin(profile.id)}
                 onGoogleConfirm={() => void confirmGoogleLogin(profile.id, profile.googleBinding?.accountId)}
                 googleCheckBusy={googleChecking.includes(profile.id)}
               />
@@ -774,6 +736,7 @@ export default function App() {
           {route.kind === "page" && view === "updates" && <UpdatesPanel notify={notify} />}
           {route.kind === "page" && view === "mcp" && <McpPage origin={window.location.origin} notify={notify} />}
           {route.kind === "page" && view === "guide" && <Guide />}
+          {route.kind === "page" && view === "platforms" && <PlatformsPage />}
         </main>
         <footer className="page-footer">
           <span>CHROME FLEET</span>
@@ -1233,6 +1196,7 @@ function ProfileCard({
         </div>
       )}
       {!p.archived && <ProfileAccountEntry profile={p} onOpen={() => onSelect(p.id, "accounts")} />}
+      <ProfilePlatformTags profile={p} />
       <div className="card-actions">
         {!p.archived && (
           <>
@@ -1402,7 +1366,7 @@ function CreateProfile({
       </div>
       <Notice>
         将为 {initialAccount.email} 创建独立 Chrome 实例。创建后仍需通过
-        VNC 桌面自行完成 Google 登录，再点击「确认已登录」切换到自动化接管。
+        在 VNC 桌面完成 Google 登录，再点击「确认已登录」保存记录；需要自动化时可在实例设置中单独启用。
       </Notice>
       <form className="panel create-profile-form" onSubmit={submit}>
         <div className="form-section">
@@ -1587,8 +1551,6 @@ function ProfileDetail({
   busy,
   onGoogleLogin,
   onGoogleLoginStart,
-  googleStatus,
-  onGoogleCheck,
   onGoogleConfirm,
   googleCheckBusy,
 }: {
@@ -1605,8 +1567,6 @@ function ProfileDetail({
   busy: string;
   onGoogleLogin: (profile: Profile) => void;
   onGoogleLoginStart: (profile: Profile, accountId?: string) => void;
-  googleStatus?: GoogleLoginStatus;
-  onGoogleCheck: () => void;
   onGoogleConfirm: () => void;
   googleCheckBusy: boolean;
 }) {
@@ -1634,10 +1594,10 @@ function ProfileDetail({
         <div className="heading-actions">
           {!p.archived && (
             <>
-              {browserMode(p) === "vnc" && !p.googleBinding ? <Button icon="key" onClick={() => setTab("accounts")}>绑定账号</Button> : <Button
+              {!p.googleBinding ? <Button icon="key" onClick={() => setTab("accounts")}>绑定账号</Button> : <Button
                 className="google-login-button"
                 disabled={locked || p.headless}
-                title={browserMode(p) === "vnc" ? "选择账号并打开普通 Chrome VNC 桌面" : "导航此实例的 Chrome 到 Google 登录"}
+                title="打开此实例的桌面，自行完成 Google 登录"
                 onClick={() => onGoogleLogin(p)}
               >
                 <GoogleMark />
@@ -1830,8 +1790,8 @@ function ProfileDetail({
                   {browserMode(p) === "vnc" ? <><Info label="Google 绑定">{p.googleBinding?.email || "未绑定"}</Info><Info label="登录确认">{googleBindingLabel(p.googleBinding)}{p.googleBinding?.lastConfirmedAt && ` · ${date(p.googleBinding.lastConfirmedAt)}`}</Info></> : <Info label="账号绑定">{p.accounts?.length || 0} 个</Info>}
                 </dl>
                 <div className="overview-access-actions">
-                {browserMode(p) === "vnc" && p.googleBinding && <Button variant="primary" busy={googleCheckBusy} onClick={onGoogleConfirm}>{p.googleBinding.confirmationState === "confirmed" ? "启用自动化接管" : "确认已登录"}</Button>}
-                {browserMode(p) === "vnc" && <Button icon="key" onClick={() => setTab("accounts")}>账号绑定与登录确认</Button>}
+                {p.googleBinding && <Button variant="primary" busy={googleCheckBusy} onClick={onGoogleConfirm}>确认已登录</Button>}
+                <Button icon="key" onClick={() => setTab("accounts")}>账号绑定与登录确认</Button>
                 <Button
                   variant="ghost"
                   icon="settings"
@@ -1856,7 +1816,7 @@ function ProfileDetail({
                 </div>
               </section>
               <Notice>
-                {browserMode(p) === "vnc" ? "请在桌面完成登录并核对邮箱，再到「账号状态」确认已登录，启用自动化接管。" : "运行正常与账号登录有效是不同状态。自动化模式的账号检测结果可在「账号状态」中查看。"}
+                请在此实例的桌面完成登录并核对账号，再到「账号状态」保存人工确认。
               </Notice>
               {p.lastError && (
                 <div className="panel error-panel">
@@ -1876,25 +1836,13 @@ function ProfileDetail({
             onBack={onBack}
           />
         )}
-        {tab === "accounts" && (
-          browserMode(p) === "vnc" ? <VncGoogleBindingPanel
-            profile={p} reload={reload} notify={notify}
-            onLogin={(accountId) => onGoogleLoginStart(p, accountId)}
-            onConfirm={onGoogleConfirm} onOpenDesktop={() => void openDesktop(p)}
-            busy={locked} confirming={googleCheckBusy}
-          /> : <AccountsPanel
-            profile={p}
-            notify={notify}
-            onGoogleLogin={(accountId) => onGoogleLoginStart(p, accountId)}
-            googleStatus={googleStatus}
-            onGoogleCheck={onGoogleCheck}
-            onGoogleConfirm={onGoogleConfirm}
-            onOpenDesktop={() => void openDesktop(p)}
-            googleCheckBusy={googleCheckBusy}
-            loginBusy={locked}
-            onOpenSettings={() => setTab("settings")}
-          />
-        )}
+        {tab === "accounts" && <VncGoogleBindingPanel
+          profile={p} reload={reload} notify={notify}
+          onLogin={(accountId) => onGoogleLoginStart(p, accountId)}
+          onConfirm={onGoogleConfirm} onOpenDesktop={() => void openDesktop(p)}
+          busy={locked} confirming={googleCheckBusy}
+        />}
+        {tab === "accounts" && <PlatformLinksPanel profile={p} />}
         {tab === "tasks" && (
           <JobsPanel profileId={p.id} profiles={[p]} notify={notify} jobId={jobId} onSelectJob={onSelectJob} />
         )}
@@ -2281,258 +2229,6 @@ function Settings({
   );
 }
 
-function AccountsPanel({
-  profile: p,
-  notify,
-  onGoogleLogin,
-  googleStatus,
-  onGoogleCheck,
-  onGoogleConfirm,
-  onOpenDesktop,
-  googleCheckBusy,
-  loginBusy,
-  onOpenSettings,
-}: {
-  profile: Profile;
-  notify: Notify;
-  onGoogleLogin: (accountId?: string) => void;
-  googleStatus?: GoogleLoginStatus;
-  onGoogleCheck: () => void;
-  onGoogleConfirm: () => void;
-  onOpenDesktop: () => void;
-  googleCheckBusy: boolean;
-  loginBusy: boolean;
-  onOpenSettings: () => void;
-}) {
-  const vnc = browserMode(p) === "vnc";
-  const [googleAccountId, setGoogleAccountId] = useState(googleStatus?.expectedAccountId || "");
-  useEffect(() => { if (googleStatus?.expectedAccountId) setGoogleAccountId(googleStatus.expectedAccountId); }, [googleStatus?.expectedAccountId]);
-  const [accounts, setAccounts] = useState<Account[]>(p.accounts || []);
-  const [busy, setBusy] = useState(false);
-  const [show, setShow] = useState(false);
-  const [error, setError] = useState("");
-  const [detector, setDetector] = useState(false);
-  const load = useCallback(async () => {
-    try {
-      setAccounts(items<Account>(await api(`/profiles/${p.id}/accounts`)));
-      setError("");
-    } catch (e) {
-      setError(message(e));
-    }
-  }, [p.id]);
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 5000);
-    return () => clearInterval(timer);
-  }, [load]);
-  async function add(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const d = new FormData(e.currentTarget);
-    setBusy(true);
-    try {
-      await api(`/profiles/${p.id}/accounts`, "POST", {
-        provider: d.get("provider"),
-        alias: d.get("alias"),
-        expectedIdentity: d.get("identity"),
-        detector: detector
-          ? {
-              url: d.get("detectorUrl"),
-              identityLocator: { css: d.get("identitySelector") },
-              verificationLocator: d.get("verificationSelector")
-                ? { css: d.get("verificationSelector") }
-                : undefined,
-            }
-          : undefined,
-      });
-      setShow(false);
-      notify(vnc ? "已记录期望账号，尚未确认登录。请在 VNC 桌面登录后人工确认映射。" : "期望账号已绑定。请通过实际站点检测确认登录身份。");
-      await load();
-    } catch (e) {
-      notify(message(e), true);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <>
-      <div className="sub-heading">
-        <div>
-          <h2>账号状态</h2>
-          <p>{vnc ? "记录此 Chrome 与账号的人工确认映射，不代表服务器验证实际登录。" : "记录期望身份，避免在错误账号中执行任务。"}</p>
-        </div>
-        <div className="heading-actions">
-          <Button
-            icon="refresh"
-            busy={busy}
-            disabled={vnc}
-            title={vnc ? "VNC 模式不读取网页或检测登录身份" : undefined}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const r = await api(
-                  `/profiles/${p.id}/accounts/check`,
-                  "POST",
-                  {},
-                );
-                notify(`登录状态检测任务已提交：${r.jobId}`);
-              } catch (e) {
-                notify(message(e), true);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            检测登录状态
-          </Button>
-          <Button variant="primary" icon="plus" onClick={() => setShow(true)}>
-            绑定期望账号
-          </Button>
-        </div>
-      </div>
-      <ProfileConfirmationSummary profile={p} onOpenSettings={onOpenSettings} />
-      <section className="panel google-account-panel">
-        <div className="panel-heading">
-          <div className="google-account-panel-title">
-            <GoogleMark />
-            <div>
-              <h2>{vnc ? "VNC 登录与人工绑定" : "Google 登录辅助"}</h2>
-              <p>{vnc ? "先选账号，进入普通 Chrome 自行登录，再明确确认绑定。" : "自动化模式的填写与身份检测兼容功能。"}</p>
-            </div>
-          </div>
-          <Button
-            className="google-login-button"
-            disabled={loginBusy || p.headless || p.archived || (vnc && !googleAccountId)}
-            onClick={() => onGoogleLogin(googleAccountId || undefined)}
-          >
-            <GoogleMark />
-            {vnc ? "打开VNC登录" : "Google 登录"}
-          </Button>
-        </div>
-        <GoogleAccountPicker
-          profileId={p.id}
-          value={googleAccountId}
-          onChange={setGoogleAccountId}
-          refreshKey={googleStatus?.status}
-          mode={browserMode(p)}
-        />
-        <p className="google-login-guidance">
-          远程桌面会自动连接。{vnc ? "请自行在 Chrome 打开 Google 登录页，填写邮箱、密码并完成验证。系统不读取 DOM、不自动填凭据、不检测身份。登录后回到下方确认，系统会保留用户目录并切换到自动化接管。" : googleAccountId
-            ? "系统填写所选账号的邮箱，等待你点击邮箱页的下一步；检测进入密码页后再填写密码，由你确认提交。"
-            : "选择已导入账号可启用填写辅助；不指定账号时，请在桌面自行填写登录凭证。"}
-          {!vnc && " 验证码与二次验证由你完成。保存的账号密码可在账号管理中查看和编辑。登录后由自动化模式检测身份。"}
-        </p>
-        {vnc && <Button disabled={loginBusy || p.headless || p.archived} onClick={onOpenDesktop}>仅打开桌面，不绑定账号</Button>}
-        {googleStatus && (
-          <GoogleLoginProgress
-            value={googleStatus}
-            busy={googleCheckBusy}
-            onCheck={onGoogleCheck}
-            mode={browserMode(p)}
-            onConfirm={googleStatus.expectedAccountId ? onGoogleConfirm : undefined}
-            confirmBusy={googleCheckBusy}
-          />
-        )}
-      </section>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <Notice>
-        {vnc ? "「人工确认」只表示你确认了此账号与 Chrome 的映射，不表示服务器检测过 Google。已有历史绑定也不能证明当前网站实际已登录。" : "Cookie 存在不代表账号已登录。自动化检测结果与人工确认记录会分别标记。"}
-      </Notice>
-      <div className="panel account-list">
-        {accounts.length ? (
-          accounts.map((a) => (
-            <div className="account-row" key={a.id}>
-              <span className="account-avatar">
-                {(a.provider || "A").slice(0, 1).toUpperCase()}
-              </span>
-              <div>
-                <strong>{a.alias || a.provider}</strong>
-                <p>{a.expectedIdentity}</p>
-                <small>
-                  {a.provider} · {a.authState === "manually_confirmed" ? `人工确认 ${date(a.boundAt || a.lastCheckedAt)} · 非服务器验证` : `最近检测 ${date(a.lastCheckedAt)}`}
-                </small>
-              </div>
-              <Badge value={a.authState || a.state || a.status || "unknown"} label={vnc && a.authState === "authenticated" ? "历史自动化检测" : undefined} />
-            </div>
-          ))
-        ) : (
-          <Empty title="尚未绑定期望账号" icon="key">
-            <p>先在远程桌面完成登录，再绑定对应的账号身份。</p>
-          </Empty>
-        )}
-      </div>
-      {show && (
-        <Modal
-          title="绑定期望账号"
-          subtitle="只记录期望身份，不收集你的网站密码"
-          onClose={() => setShow(false)}
-        >
-          <form onSubmit={add}>
-            <Field label="站点 / 提供商">
-              <input
-                name="provider"
-                required
-                placeholder="例如 google 或 example.com"
-              />
-            </Field>
-            <Field label="账号别名">
-              <input name="alias" required placeholder="例如 工作账号" />
-            </Field>
-            <Field label="期望账号身份">
-              <input
-                name="identity"
-                required
-                placeholder="邮箱或可核验的账号标识"
-              />
-            </Field>
-            <label className="check-field">
-              <input
-                type="checkbox"
-                checked={detector}
-                onChange={(e) => setDetector(e.target.checked)}
-              />
-              配置自有站点检测器
-            </label>
-            {detector && (
-              <>
-                <Field label="检测页面 URL">
-                  <input
-                    name="detectorUrl"
-                    type="url"
-                    required
-                    placeholder="https://example.com/account"
-                  />
-                </Field>
-                <Field label="账号身份 CSS 选择器">
-                  <input
-                    name="identitySelector"
-                    required
-                    placeholder="[data-account-email]"
-                  />
-                </Field>
-                <Field label="验证 / CAPTCHA 元素 CSS 选择器">
-                  <input name="verificationSelector" placeholder="可选" />
-                </Field>
-              </>
-            )}
-            <div className="modal-actions">
-              <Button type="button" onClick={() => setShow(false)}>
-                取消
-              </Button>
-              <Button type="submit" variant="primary" busy={busy}>
-                绑定账号
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-    </>
-  );
-}
-
 function JobsPanel({
   profileId,
   notify,
@@ -2785,11 +2481,11 @@ function JobsPanel({
               </Field>
             )}
             <Field
-              label="执行前核验账号"
-              hint="选定后，身份未验证将暂停任务等待人工处理"
+              label="期望账号（需人工确认）"
+              hint="选定后，尚未人工确认的账号将暂停任务等待处理"
             >
               <select name="expectedAccountId">
-                <option value="">不指定账号检测</option>
+                <option value="">不指定期望账号</option>
                 {profiles
                   .find((p) => p.id === (profileId || targetId))
                   ?.accounts?.map((a) => (
@@ -3699,8 +3395,8 @@ function Guide() {
           ],
           [
             "03",
-            "确认登录并启用自动化接管",
-            "在账号状态页或账号目录关联行点击「确认已登录」，系统会结束人工桌面、保存恢复点，并使用原用户目录切换到自动化接管。之后可执行网页任务，并按设置自动关闭空闲实例。",
+            "保存人工登录确认",
+            "在账号状态页或账号目录关联行点击「确认已登录」，保存人工记录并保留普通 Chrome 和桌面。需要网页任务时，可在实例设置中单独启用自动化。",
             "shield",
           ],
           [

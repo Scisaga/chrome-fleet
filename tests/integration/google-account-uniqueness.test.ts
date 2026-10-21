@@ -104,28 +104,17 @@ test("selected Google login cannot start another browser or decrypt an occupied 
   } finally { await f.close(); }
 });
 
-test("automatic identity detection cannot claim another instance's account and can bind after it is released", async () => {
+test("removed identity endpoints cannot auto-bind even when another instance releases the account", async () => {
   const f = await fixture();
   try {
-    const selected = await account(f); const other = await account(f, "replacement@example.test");
+    const selected = await account(f), other = await account(f, "replacement@example.test");
     const owner = (await f.request("POST", profiles, { name: "已绑定实例", accountAlias: selected.email })).json().data;
     const target = await f.create();
-    const original = f.service.agent.bind(f.service);
-    f.service.agent = async (profile, path, body, token, timeout) => {
-      if (path === "/accounts/google-login") return { opened: true };
-      if (path === "/accounts/google-identity") return { status: "authenticated", identity: selected.email.toUpperCase() };
-      return original(profile, path, body, token, timeout);
-    };
-    assert.equal((await f.request("POST", `${profiles}/${target.id}/google-login`, {})).statusCode, 201);
-    const path = `${profiles}/${target.id}/google-login/check`;
-    const detected = await f.request("POST", path, {});
-    assert.equal(detected.statusCode, 200);
-    assert.equal(detected.json().data.status, "mismatch");
-    assert.equal(f.service.db.list<any>("accounts").filter(row => row.profileId === target.id).length, 0);
-    assert.equal(f.service.google.binding(owner.id)?.accountId, selected.id);
-    assert.equal((await f.request("PUT", binding(owner.id), { accountId: other.id })).statusCode, 200);
-    const released = await f.request("POST", path, {});
-    assert.equal(released.json().data.status, "bound");
-    assert.equal(f.service.google.list().find(entry => entry.id === selected.id)!.bindings[0].profileId, target.id);
+    for (const released of [false, true]) {
+      if (released) await f.request("PUT", binding(owner.id), { accountId: other.id });
+      assert.equal((await f.request("POST", `${profiles}/${target.id}/google-login/check`, {})).statusCode, 410);
+      assert.equal(f.service.db.list<any>("accounts").filter(row => row.profileId === target.id).length, 0);
+    }
+    assert.equal(f.starts.size, 0);
   } finally { await f.close(); }
 });
