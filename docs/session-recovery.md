@@ -18,6 +18,13 @@ Cookie标准格式为 `{format:"chrome-fleet.cookies",version:1,exportedAt,cooki
 人工确认是用户对当时登录情况的声明。本地 fixture 不证明 Google 永久保持会话。首次登录、验证码、2FA和服务器撤销后的重新验证都需要人工桌面。
 
 Playwright storageState 只导出当前上下文已知的 origin。重启后应先打开需要导出的站点，再导出其 localStorage/IndexedDB；未访问的既有站点可能不在 origins 中。需要覆盖全部站点和完整环境时使用离线完整快照。
+
+## 手动登录模式要求与验证记录
+
+手动登录、注册、验证码和二次验证统一使用普通 Chrome（VNC，`browserMode: "vnc"`），不要使用自动化兼容模式（`browserMode: "automation"`）。打开登录桌面前确认实例实际运行的模式；旧实例仍为自动化兼容模式时，先在实例设置中通过正常流程切换到普通 Chrome（VNC），再由用户完成登录。需要网页自动化任务时另行切换；任务中需要重新登录时，先切回 VNC。
+
+2026-10-22：GitHub 在自动化兼容模式下出现“访问暂时受限”，当时通过实例代理请求注册入口返回 HTTP 403。用户随后改用普通 Chrome（VNC）手动重试，并确认登录成功。后续手动登录遵循上述模式要求；该成功结果记录为用户确认。
+
 ## Google 人工登录与实例绑定
 
 新建实例默认使用 VNC 模式：Chrome 以普通独立进程启动，使用原有专用用户目录、keyring、sandbox 和代理，通过受保护的 noVNC 桌面操作；不建立 Playwright/CDP 连接，也不自动填写或读取 Google 页面。
