@@ -33,6 +33,7 @@ import { Platforms } from "./platforms.js";
 import { accountView, manuallyConfirmed } from "./account-confirmation.js";
 import { metricsIntervalMs, metricsView, unavailableMetrics } from "./metrics.js";
 import { HostMetricsSampler } from "./host-metrics.js";
+import { DesktopPreviews } from "./desktop-preview.js";
 export class FleetService {
   db: Store;
   vault: Vault;
@@ -40,6 +41,7 @@ export class FleetService {
   google: GoogleAccounts;
   platforms: Platforms;
   hostMetrics = new HostMetricsSampler();
+  desktopPreviews = new DesktopPreviews(id => this.profile(id), profile => this.agent(profile, "/desktop/preview", undefined, undefined, 5000));
   active = new Set<string>();
   starts = new Map<string, Promise<Profile>>();
   timer?: NodeJS.Timeout;
@@ -123,6 +125,9 @@ export class FleetService {
   }
   saveProfile(p: Profile) {
     const previous = this.db.get<Profile>("profiles", p.id);
+    if (previous?.state !== p.state || previous?.browserMode !== p.browserMode || previous?.agentUrl !== p.agentUrl ||
+        previous?.archived !== p.archived || previous?.purgedAt !== p.purgedAt)
+      this.desktopPreviews.invalidate(p.id, Boolean(p.archived || p.purgedAt));
     if (previous?.state !== p.state) {
       this.metricsEpoch.set(p.id, (this.metricsEpoch.get(p.id) || 0) + 1);
       p.metrics = unavailableMetrics(p.state === "running" ? "METRICS_NOT_SAMPLED" : "PROFILE_NOT_RUNNING");
@@ -451,7 +456,7 @@ export class FleetService {
   ): Promise<any> {
     if (["/accounts/check", "/accounts/google-identity", "/accounts/google-login", "/accounts/google-autofill", "/accounts/open-login"].includes(path))
       throw new FleetError("ACCOUNT_CHECK_REMOVED", "自动访问和识别账号的功能已移除，请在桌面登录后人工确认", 410);
-    if (this.browserMode(p) === "vnc" && !["/health", "/fence", "/shutdown", "/cancel", "/vnc/reload", "/desktop/clipboard"].includes(path))
+    if (this.browserMode(p) === "vnc" && !["/health", "/fence", "/shutdown", "/cancel", "/vnc/reload", "/desktop/clipboard", "/desktop/preview"].includes(path))
       this.requireAutomation(p);
     if (path === "/health") timeout = Math.min(timeout, 5000);
     const root = p.agentUrl;
@@ -1972,6 +1977,7 @@ export class FleetService {
     return run;
   }
   close() {
+    this.desktopPreviews.close();
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearInterval(this.timer);

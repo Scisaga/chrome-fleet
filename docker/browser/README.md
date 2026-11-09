@@ -13,6 +13,16 @@ docker build -f docker/browser/Dockerfile \
 
 Google Chrome 通过 Google 官方签名 APT 仓库安装确切版本。Google 仓库不保证继续提供所有旧版本，因此旧镜像及快照必须保留，不能把重新下载旧安装包当作回滚机制。显式 `CHROME_DISTRIBUTION=cft` 使用官方 CfT 发布 JSON 和白名单 HTTPS 下载地址；官方此渠道没有提供项目可验证的安装包签名，本实现不声称验证了不存在的官方 checksum。
 
+已有兼容镜像时，可只更新 Fleet Agent、桌面脚本和预览依赖，保留该镜像中的 Chrome：
+
+```sh
+docker build -f docker/browser/Dockerfile.runtime \
+  --build-arg BROWSER_BASE=chrome-fleet/browser:google-155.0.8059.79 \
+  -t chrome-fleet/browser:google-stable .
+```
+
+此路径适用于固定安装包已从上游移除的情况。基础镜像须已通过项目兼容性验证；构建结果仍须经过 Runner `/images/validate` 后再发布。`FLEET_BROWSER_IMAGE` 可配置默认镜像，已验证且已应用的版本目录记录继续优先；更新运行组件时同步记录新镜像的不可变 digest，现有实例通过受控更新获得新能力。
+
 Runner 仅接受 `cf_<UUID>` 标识，以及 `chrome-fleet/browser:google-<版本>`、`:cft-<版本>` 或经构建标签复核的 digest。expectedDigest 可固定已验证内容，容器实际由该不可变 ID 创建。浏览器不发布宿主端口、不挂 Docker socket、使用只读根目录、独立 shm、cap_drop ALL、no-new-privileges、受限 seccomp、内存/CPU/PID 限额。`seccomp.json` 基于 [Playwright v1.64.1](https://github.com/microsoft/playwright/blob/v1.64.1/utils/docker/seccomp_profile.json)，含启用 namespace sandbox 所需 clone/setns/unshare 系统调用，并额外允许 chroot syscall：官方模板默认仅在外层持有 CAP_SYS_CHROOT 时放行，cap_drop ALL 会使 Chromium 在自己的 user namespace 中也被 seccomp 拒绝。此调整不向宿主 namespace 授予该 capability。
 
 每实例单独创建 `cf_egress_<UUID>` 网络，使用 `172.31.X.0/24` 与 `cf` 开头的网桥，控制网络为 `172.30.0.0/24`，控制服务 `.2`、Runner `.3`、浏览器 `.32` 至 `.250`。部署前在 Docker 宿主机执行：

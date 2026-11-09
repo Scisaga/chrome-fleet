@@ -3157,3 +3157,64 @@ td small {
     font-size: 12px;
   }
 }
+
+/* Persistent desktop work area; the underlying management page keeps its state. */
+main[hidden], .page-footer[hidden], .desktop-workspace__screens[hidden], .desktop-workspace iframe[hidden] { display: none; }
+.has-expanded-desktop { height: 100dvh; min-height: 0; overflow: hidden; }
+.has-expanded-desktop .main-shell { height: 100dvh; min-height: 0; }
+.desktop-workspace { min-width: 0; background: #fff; border-bottom: 1px solid var(--line); }
+.desktop-workspace.is-expanded { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.desktop-workspace:fullscreen { width: 100%; height: 100%; }
+.desktop-workspace__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 18px; background: #fafafe; }
+.desktop-workspace__tabs { display: flex; flex: 1 1 260px; min-width: 0; gap: 5px; overflow-x: auto; scrollbar-width: thin; }
+.desktop-workspace__tabs button { display: flex; align-items: center; flex-shrink: 0; gap: 8px; max-width: 235px; min-height: 37px; padding: 8px 12px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #81899b; font: inherit; font-size: 13px; cursor: pointer; }
+.desktop-workspace__tabs button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-workspace__tabs button.is-current { background: #eeeafa; border-color: #e1daf7; color: var(--purple-dark); }
+.desktop-workspace__tabs button[aria-selected="true"] { box-shadow: inset 0 -2px var(--purple); }
+.desktop-connection-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #b7bdc9; }
+.desktop-connection-dot.connected { background: var(--green); }
+.desktop-connection-dot.connecting { background: #c79d48; }
+.desktop-connection-dot.error, .desktop-connection-dot.expired { background: #cc6868; }
+.desktop-workspace__actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
+.desktop-workspace__actions .button { min-height: 33px; padding: 7px 10px; font-size: 12px; }
+.desktop-workspace__status { color: #8a829e; font-size: 12px; white-space: nowrap; }
+.desktop-workspace__screens { position: relative; background: #151923; flex: 1; min-height: 0; }
+.desktop-workspace__screens iframe { display: block; width: 100%; height: 100%; border: 0; position: absolute; inset: 0; }
+.desktop-workspace__empty { display: grid; place-content: center; justify-items: center; height: 100%; color: #c9c5d7; }
+.desktop-workspace__login { padding: 8px 18px; border-top: 1px solid var(--line); background: #fff; max-height: 24dvh; overflow: auto; }
+.desktop-workspace__login .google-login-progress { margin: 0; }
+.desktop-workspace__more { position: relative; font-size: 12px; }
+.desktop-workspace__more summary { display: flex; align-items: center; gap: 5px; cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; list-style: none; color: #746d89; background: white; }
+.desktop-workspace__more summary::-webkit-details-marker { display: none; }
+.desktop-workspace__more > div { position: absolute; top: calc(100% + 6px); right: 0; z-index: 45; min-width: 175px; background: white; padding: 5px; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px #16132a1f; }
+.desktop-workspace__more button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px; border: 0; border-radius: 5px; background: transparent; color: #56506b; font: inherit; cursor: pointer; }
+.desktop-workspace__more button:hover { background: #f3f0fb; }
+.desktop-preview { display: block; position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; padding: 0; margin: 14px 0; border: 1px solid #e7e8f0; border-radius: 7px; background: #edf0f6; cursor: pointer; color: #8b92a4; font: inherit; }
+.desktop-preview img { display: block; width: 100%; height: 100%; object-fit: contain; background: #1b202b; }
+.desktop-preview__empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 12px; background: linear-gradient(135deg, #f0edf9, #edf1f8); }
+.desktop-preview__status { display: flex; align-items: center; gap: 5px; position: absolute; bottom: 0; left: 0; right: 0; padding: 7px 9px; background: #192031c9; color: #e0e3ed; font-size: 10px; white-space: nowrap; }
+.desktop-preview__status time { margin-left: auto; color: #c9cfdd; }
+.desktop-preview__status .small-dot { background: #85bba4; }
+.desktop-preview[data-preview-state="stopped"] .small-dot, .desktop-preview[data-preview-state="unavailable"] .small-dot { background: #acb2bf; }
+.desktop-preview[data-preview-state="stale"] .small-dot { background: #d7ae6b; }
+.desktop-preview__lease { position: absolute; top: 9px; left: 9px; border-radius: 5px; padding: 5px 7px; background: #6756bce8; color: white; font-size: 10px; }
+.desktop-preview__open { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: white; background: #231e466e; opacity: 0; transition: opacity .15s; font-size: 14px; }
+.desktop-preview:not(:disabled):hover .desktop-preview__open, .desktop-preview:focus-visible .desktop-preview__open { opacity: 1; }
+.desktop-preview:disabled { cursor: default; }
+.desktop-preview:focus-visible { outline: 3px solid #b1a5eb; outline-offset: 2px; }
+.profile-card.is-desktop-return { animation: desktop-card-return 2.5s ease-out; }
+@keyframes desktop-card-return { from { box-shadow: 0 0 0 4px #b3a6ef; border-color: var(--purple); } to { box-shadow: 0 0 0 0 transparent; } }
+@media (min-width: 761px) {
+  .sidebar-collapsed .sidebar { display: none; }
+  .sidebar-collapsed .main-shell { width: 100%; margin-left: 0; }
+  .has-expanded-desktop .topbar { height: 55px; }
+}
+@media (max-width: 760px) {
+  .desktop-workspace__bar { padding: 8px 12px; gap: 6px; }
+  .desktop-workspace__tabs { flex-basis: 100%; }
+  .desktop-workspace__actions { width: 100%; }
+  .desktop-workspace__status { flex: 1 1 100%; }
+  .desktop-workspace__actions .button { padding: 6px 8px; }
+  .desktop-workspace__actions > .button[aria-label="折叠或展开导航"] { display: none; }
+  .desktop-workspace__login { padding: 6px 12px; }
+}

@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, message, safeDesktopPath, type ManualSession, type Platform, type PlatformAccount, type Profile } from "./api";
+import { api, message, type Platform, type PlatformAccount, type Profile } from "./api";
 import { Button, Empty, Field, Modal, Notice } from "./components";
 import { accountsChanged, PlatformAccountList } from "./PlatformAccounts";
 import { loadPlatforms } from "./PlatformsPage";
 
-export default function PlatformLinksPanel({ profile }: { profile: Profile }) {
+export default function PlatformLinksPanel({ profile, onOpenLogin }: { profile: Profile; onOpenLogin: (platformId: string) => Promise<void> }) {
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [show, setShow] = useState(false);
   const [selectedPlatformId, setSelectedPlatformId] = useState("");
@@ -45,16 +45,11 @@ export default function PlatformLinksPanel({ profile }: { profile: Profile }) {
     finally { setBusy(""); }
   }
   async function openLogin(platformId: string) {
-    const popup = window.open("about:blank", "_blank");
-    if (popup) { popup.opener = null; popup.document.body.textContent = "正在准备平台登录桌面…"; }
     setBusy(platformId); setLoginError("");
     try {
-      const session = await api<ManualSession & { message?: string }>(`/profiles/${profile.id}/platforms/${platformId}/login`, "POST", {});
-      const path = safeDesktopPath(session.desktopPath);
-      if (popup) popup.location.replace(path);
-      window.dispatchEvent(new CustomEvent("fleet-platform-desktop", { detail: { ...session, profileId: profile.id, desktopPath: path, popup } }));
+      await onOpenLogin(platformId);
       accountsChanged();
-    } catch (failure) { popup?.close(); setLoginError(message(failure)); }
+    } catch (failure) { setLoginError(message(failure)); }
     finally { setBusy(""); }
   }
   return <section className="panel platform-links-panel">

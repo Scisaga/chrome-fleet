@@ -11,6 +11,24 @@ const english = {
   "安全会话已连接": "Secure session connected", "控制服务已连接": "Control service connected", "自托管": "Self-hosted",
   "宿主机": "Host", "内存": "Memory", "每 3 秒更新": "Refreshes every 3s",
   "每 3 秒同步状态": "Status refreshes every 3s", "未运行": "Not running",
+  "最近画面": "Latest preview", "画面较旧": "Older preview", "更新于": "Updated",
+  "人工接管中": "Manual control", "人工接管中 · 剩余": "Manual control · Remaining", "· 剩余": "· Remaining",
+  "已连接": "Connected", "连接中": "Connecting", "已断开": "Disconnected", "已收起": "Minimized",
+  "剪贴板": "Clipboard", "缩回卡片": "Back to cards", "全屏": "Fullscreen", "退出全屏": "Exit fullscreen",
+  "更多": "More", "在新窗口打开": "Open in new window", "结束人工接管": "End manual control",
+  "折叠或展开导航": "Toggle navigation", "已打开的桌面": "Open desktops", "远程桌面工作区": "Desktop workspace",
+  "平台管理": "Platforms", "进入桌面": "Open desktop", "启动并打开": "Start and open",
+  "更新登录确认": "Update login confirmation", "人工接管": "Manual control",
+  "关联平台": "Linked platforms", "关联平台（": "Linked platforms (", "管理关联平台": "Manage linked platforms",
+  "登记关联平台": "Add linked platform", "尚未登记关联平台": "No linked platforms", "尚未登记关联平台。": "No linked platforms yet.",
+  "先在平台管理添加平台，再在此登记关联。": "Add a platform in Platforms, then link it here.",
+  "登记通过此 Google 首次登录创建的账户。在此实例桌面完成登录后，填写账号 ID 并人工确认。": "Record accounts first created through this Google account. Enter the account ID and confirm sign-in after checking this instance's desktop.",
+  "请先在此实例桌面完成登录并核对邮箱，再点击「确认已登录」，无需重新打开桌面。": "Sign in and verify the email on this instance's desktop, then choose Confirm signed in. You can keep the desktop open. ",
+  "确认只保存人工记录，浏览器模式和桌面会话保持不变。": "Confirmation only saves a manual record; the browser mode and desktop session are preserved.",
+  "确认已登录只保存人工记录，浏览器模式和桌面会话保持不变。请在此实例的桌面中自行访问 https://accounts.google.com/ 完成登录。": "Confirmation saves a manual record and preserves the browser mode and desktop session. Open https://accounts.google.com/ in this instance's desktop to sign in.",
+  "自动化模式允许执行网页任务。Google 可能拒绝自动化浏览器中的重新登录；人工登录和验证请使用普通 Chrome（VNC 模式）。": "Automation supports web tasks. Google may reject sign-in in an automated browser; use regular Chrome (VNC) for manual sign-in and verification.",
+  "新建实例默认为 VNC。网页自动化和会话导入导出，需要先在实例设置中切换为自动化模式。Google 账号绑定与人工登录确认仍在管理界面完成。": "New instances default to VNC. Enable automation in instance settings for web tasks and session transfers. Google account binding and manual login confirmation are managed in the dashboard.",
+  "申请受保护桌面租约，完成登录后在实例详情保存人工确认。": "Open a protected desktop session, then save manual sign-in confirmation in the instance details.",
   "运行中": "Running", "已停止": "Stopped", "已完成": "Completed", "失败": "Failed",
   "已取消": "Cancelled", "等待人工": "Needs attention", "排队中": "Queued",
   "已人工确认登录": "Login confirmed", "人工确认": "Manually confirmed", "非服务器验证": "Not server-verified",
@@ -35,7 +53,7 @@ const english = {
   "概览": "Overview", "实例设置": "Settings", "账号状态": "Account status", "自动化任务": "Tasks",
   "会话与备份": "Sessions & backups", "浏览器更新": "Browser updates", "返回全部实例": "All instances",
   "确认已登录": "Confirm signed in", "换绑账号": "Change account",
-  "已绑定，待人工确认": "Awaiting sign-in", "已绑定账号：": "Bound account:",
+  "已绑定，待人工确认": "Awaiting sign-in", "已绑定账号：": "Bound account: ",
   "所有状态": "All statuses", "启动中": "Starting", "异常": "Error", "已关联实例": "Linked instances", "未关联实例": "Unlinked instances",
   "按需启动 · 任务或桌面需要时运行": "On demand · Start for tasks or desktop access",
   "手动启动 · 后台任务不能自动启动": "Manual · Background tasks cannot start Chrome",
@@ -153,13 +171,15 @@ export async function localizeDocumentationPreview(page) {
     const han = /[\u3400-\u9fff]/;
     const translate = value => {
       const key = value.trim();
-      if (!han.test(key)) return value;
+      if (!han.test(key)) return value.replaceAll("（", "(").replaceAll("）", ")");
       let result = Object.hasOwn(dictionary, key) ? dictionary[key] : undefined;
       if (result === undefined) {
         const rules = [
           [/^已加载 (\d+) \/ (\d+) 条$/, (_, loaded, total) => `Loaded ${loaded} / ${Number(total).toLocaleString("en-US")}`],
           [/^每 (\d+) 秒更新$/, (_, seconds) => `Refreshes every ${seconds}s`],
           [/^每 (\d+) 秒同步状态$/, (_, seconds) => `Status refreshes every ${seconds}s`],
+          [/^(.*) · 剩余 (.+)$/, (_, name, time) => `${dictionary[name] || name} · Remaining ${time}`],
+          [/^更新于 (.+)$/, (_, time) => `Updated ${time}`],
           [/^(\d+) 类功能 · (\d+) 个工具$/, (_, groups, tools) => `${groups} categories · ${tools} tools`],
           [/^(\d+) 个工具$/, (_, count) => `${count} tools`],
           [/^显示 (\d+) \/ 共 (\d+) 个账号$/, (_, shown, total) => `Showing ${shown} / ${total} accounts`],

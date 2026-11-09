@@ -9,7 +9,7 @@ export function documentationJobs(profileId) {
   const hourly = [2, 1, 1, 0, 0, 1, 2, 5, 10, 18, 24, 20, 10, 16, 25, 29, 23, 15, 9, 6, 4, 3, 3, 2];
   const daily = [1, 1.12, 0.83, 1.19, 0.94, 0.32, 0.24];
   const now = Date.parse(fixedNow), records = [];
-  const kinds = ["automation", "automation", "automation", "automation", "automation", "automation", "accounts_check", "accounts_check", "proxy_test", "start", "stop"];
+  const kinds = ["automation", "automation", "automation", "automation", "automation", "automation", "automation", "proxy_test", "proxy_test", "start", "stop"];
   for (let day = 0; day < 7; day++) {
     for (let hour = 0; hour < 24; hour++) {
       const start = firstDay + (day * 24 + hour) * hourMs;

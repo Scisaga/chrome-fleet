@@ -180,6 +180,10 @@ noVNC 自动认证使用桌面网关内部的 `POST /profiles/{id}/desktop/crede
 
 桌面文本剪贴板使用同样保护的内部 `POST /profiles/{id}/desktop/clipboard`，请求 `{sessionId,version,action:"read"}` 或 `{sessionId,version,action:"write",text}`。读取返回 `data:{text}`，写入返回 `data:{written:true}`，只设置当前实例的X11 CLIPBOARD，不自动粘贴或提交。仅接受有效Web会话、CSRF和匹配Origin，前后重查本人租约及上下文，Agent同时检查fence。文本上限128KiB UTF-8，拒绝NUL或无效文本；不在任务、审计、幂等缓存或浏览器存储保存正文，响应禁止缓存。该入口不属于普通REST/OpenAPI/MCP，Bearer客户端不能绕过Web会话使用。
 
+卡片预览使用内部 `GET /profiles/{id}/desktop/preview`，要求平台认证、`automate`及实例范围权限，独立于人工会话和租约。成功返回最大640×400的PNG，以及`X-Fleet-Preview-Sampled-At`采样时间，响应`Cache-Control: no-store`；没有可用画面返回`503 DESKTOP_PREVIEW_UNAVAILABLE`。控制服务按需合并同实例请求，每5秒更新，最多两个采样并发，64MiB内存缓存按最近使用顺序淘汰。停止实例仍可读取已有缓存；归档、删除清空对应缓存；迟到的旧运行代次结果被丢弃。Agent的鉴权`GET /desktop/preview`返回`{mimeType,base64,sampledAt}`，健康状态通过`desktopPreviewAvailable`声明支持能力。采样仅读取X11画面，不改变浏览器模式、任务、活动时间或fence。
+
+旧镜像尚无Agent预览能力时，该接口仍返回503。管理页面会复用本人有效人工会话的同源VNC画布，缩放为640×400以内的PNG并仅缓存于当前页面内存；只读恢复已有连接不创建或续期人工租约。失去桌面权限或退出登录会清理客户端缓存及图片URL。
+
 代理字段为 `enabled/scheme/host/port/secretRef/bypass`；`bypass` 是逗号分隔字符串。HTTP/HTTPS 可有认证；带认证 SOCKS5 明确不支持。平台根据代理配置自动同步该 profile 来源到精确目标 IP/端口的 TCP/UDP 网络规则；保存、修改、禁用、启动、停止及防火墙重载都会同步，无需客户端提供宿主防火墙参数或手填全局例外。保存后对照 `version/appliedVersion` 判断浏览器配置待生效；运行中的 Chrome 仍需要受控重启。`appliedVersion` 只说明配置已加载，不保证代理 TCP/HTTPS CONNECT 连通。配置为失败关闭，不静默回退直连；UDP 网络准入不表示 HTTP 代理具备 UDP 中继能力，浏览器代理也不等价于容器透明隧道。
 
 网页通过单一“代理地址”输入框填写 `scheme://host:port`，提交前解析为既有的 `scheme/host/port` 字段；REST与SDK的代理结构保持上述格式。省略协议默认HTTP，省略端口采用HTTP80、HTTPS443、SOCKS51080。代理地址不接受路径、查询参数、片段或内嵌凭据；认证继续通过独立字段提交。同一端点重新保存时保留原主机键的大小写及IPv6写法，避免规范化地址时丢失已保存的认证引用。

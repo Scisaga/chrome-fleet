@@ -171,6 +171,8 @@ export interface Profile {
   lastUpdateId?: string;
   resources?: { memoryMb: number; cpus: number; pidsLimit: number };
   health?: {
+    browserMode?: "vnc" | "automation";
+    desktopPreviewAvailable?: boolean;
     ready?: boolean;
     sandboxEnabled?: boolean;
     keyring?: { unlocked?: boolean; probeVerified?: boolean };

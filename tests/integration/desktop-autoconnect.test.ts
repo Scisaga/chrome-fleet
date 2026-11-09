@@ -150,11 +150,14 @@ test('desktop WebSocket binds both explicit and legacy connections to their orig
   } finally { for (const client of clients) client.terminate(); await f.close(); await upstream.close(); }
 });
 
-function clientHarness() {
+function clientHarness(embedded = false) {
   const profileId = 'cf_11111111-1111-4111-8111-111111111111';
   const sessionId = 'manual_22222222-2222-4222-8222-222222222222';
   const dataset: Record<string, string> = {};
-  const pageEvents = new Map<string, () => void>();
+  const pageEvents = new Map<string, (event?: any) => void>();
+  const messages: any[] = [];
+  const parent = { postMessage: (message: unknown, origin: string) => messages.push({ message, origin }) };
+  const clicks: string[] = [];
   const requests: { path: string; init: any }[] = [];
   const connections: any[] = [];
   let status = 200;
@@ -165,7 +168,8 @@ function clientHarness() {
     connect(_event: unknown, password: string) {
       const listeners = new Map<string, ((event: any) => void)[]>();
       const rfb = {
-        password, sends: 0,
+        password, sends: 0, viewOnly: false, blurs: 0,
+        blur() { this.blurs++; },
         addEventListener(type: string, fn: (event: any) => void) { listeners.set(type, [...(listeners.get(type) ?? []), fn]); },
         emit(type: string, extra: any = {}) { for (const fn of listeners.get(type) ?? []) fn({ target: rfb, ...extra }); },
         disconnect() { ui.disconnectFinished({ detail: { clean: true } }); },
@@ -178,8 +182,8 @@ function clientHarness() {
   };
   const sandbox = {
     UI: ui,
-    document: { querySelector: () => ({ dataset: { profileId, sessionId, version: '1' } }), documentElement: { dataset } },
-    window: { location: { hostname: '127.0.0.1', port: '8080', protocol: 'http:' }, addEventListener: (name: string, fn: () => void) => pageEvents.set(name, fn) },
+    document: { querySelector: () => ({ dataset: { profileId, sessionId, version: '1' } }), documentElement: { dataset }, getElementById: (id: string) => ({ click: () => clicks.push(id) }) },
+    window: { ...(embedded ? { parent } : {}), location: { hostname: '127.0.0.1', port: '8080', protocol: 'http:', origin }, addEventListener: (name: string, fn: () => void) => pageEvents.set(name, fn) },
     fetch: async (path: string, init: any) => {
       requests.push({ path, init });
       if (path === '/api/v1/session') return { ok: true, status: 200, json: async () => ({ data: { authenticated: true, csrfToken: 'fixture-csrf' } }) };
@@ -189,8 +193,23 @@ function clientHarness() {
     AbortController, clearTimeout,
   };
   runInNewContext(desktopClientModule.replace("import UI from './app/ui.js';", ''), sandbox);
-  return { ui, dataset, requests, connections, pageEvents, profileId, sessionId, getFetches: () => fetches, setStatus: (value: number) => { status = value; } };
+  return { ui, dataset, requests, connections, pageEvents, profileId, sessionId, parent, messages, clicks, getFetches: () => fetches, setStatus: (value: number) => { status = value; } };
 }
+
+test('embedded desktop accepts input and clipboard commands only from its same-origin parent and current session', async () => {
+  const f = clientHarness(true); await f.ui.connect(); f.connections[0].emit('connect');
+  const rfb = f.connections[0]; assert.equal(rfb.viewOnly, true); assert.ok(rfb.blurs > 0);
+  const data = { type: 'fleet-desktop-command', action: 'activate', active: true, profileId: f.profileId, sessionId: f.sessionId };
+  for (const event of [
+    { origin: 'https://untrusted.example', source: f.parent, data },
+    { origin, source: {}, data }, { origin, source: f.parent, data: { ...data, sessionId: 'old-session' } },
+  ]) { f.pageEvents.get('message')!(event); assert.equal(rfb.viewOnly, true); }
+  f.pageEvents.get('message')!({ origin, source: f.parent, data }); assert.equal(rfb.viewOnly, false);
+  f.pageEvents.get('message')!({ origin, source: f.parent, data: { ...data, action: 'clipboard' } }); assert.ok(f.clicks.includes('fleet_clipboard_button'));
+  f.pageEvents.get('message')!({ origin, source: f.parent, data: { ...data, active: false } }); assert.equal(rfb.viewOnly, true); assert.ok(f.clicks.includes('fleet_clipboard_close'));
+  assert.ok(f.messages.some(({ message, origin: target }) => target === origin && message.state === 'connected' && message.sessionId === f.sessionId));
+  assert.equal(JSON.stringify(f.messages).includes('fixture1'), false);
+});
 
 test('noVNC adapter preloads one credential per new RFB, permits explicit retries and fixes shared same-origin session-bound sockets', async () => {
   const f = clientHarness();

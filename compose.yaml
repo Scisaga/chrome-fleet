@@ -23,7 +23,7 @@ services:
       FLEET_ADMIN_TOKEN_FILE: /run/secrets/admin-token
       RUNNER_TOKEN_FILE: /run/secrets/runner-token
       RUNNER_URL: http://runner:8091
-      FLEET_BROWSER_IMAGE: "chrome-fleet/browser:google-${CHROME_VERSION:-155.0.8059.79}"
+      FLEET_BROWSER_IMAGE: "${FLEET_BROWSER_IMAGE:-chrome-fleet/browser:google-${CHROME_VERSION:-155.0.8059.79}}"
       FLEET_WEB_ROOT: /app/apps/web/dist
       FLEET_MAX_CONCURRENCY: "${FLEET_MAX_CONCURRENCY:-3}"
     volumes:

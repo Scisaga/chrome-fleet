@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+# Update Fleet components on an existing compatible image without downloading Chrome again.
+ARG BROWSER_BASE=chrome-fleet/browser:google-155.0.8059.79
+FROM node:24.22.0-bookworm-slim AS agent-build
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+WORKDIR /build
+COPY . .
+RUN npm ci --ignore-scripts --workspace @chrome-fleet/browser-agent --include-workspace-root \
+ && npm run build --workspace @chrome-fleet/browser-agent
+
+FROM ${BROWSER_BASE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends imagemagick \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=agent-build /build/node_modules /app/node_modules
+COPY --from=agent-build /build/apps/browser-agent/package.json /app/apps/browser-agent/package.json
+COPY --from=agent-build /build/apps/browser-agent/dist /app/apps/browser-agent/dist
+COPY docker/browser/entrypoint.sh /usr/local/bin/fleet-entrypoint
+COPY docker/browser/session.sh /usr/local/bin/fleet-session
+COPY docker/browser/vnc-reload.sh /usr/local/bin/fleet-vnc-reload
+RUN chmod 0755 /usr/local/bin/fleet-entrypoint /usr/local/bin/fleet-session /usr/local/bin/fleet-vnc-reload
+USER 1000:1000

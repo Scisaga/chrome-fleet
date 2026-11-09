@@ -39,6 +39,21 @@ export function installDesktop(
         sockets.delete(socket);
       }
   };
+  app.get("/profiles/:id/desktop/preview", async (req, reply) => {
+    const pid = (req.params as any).id;
+    const check = () => {
+      const principal = auth.authenticate(req);
+      auth.require(principal, "automate", pid);
+      const profile = service.profile(pid);
+      if (profile.archived || profile.purgedAt)
+        throw new FleetError("DESKTOP_PREVIEW_UNAVAILABLE", "实例预览不可用", 503);
+    };
+    check();
+    const frame = await service.desktopPreviews.get(pid);
+    check();
+    return reply.type("image/png").header("Cache-Control", "no-store")
+      .header("X-Fleet-Preview-Sampled-At", frame.sampledAt).send(frame.bytes);
+  });
   app.get("/profiles/:id/desktop", async (req, reply) => {
     const pid = (req.params as any).id;
     authorized(req, pid);

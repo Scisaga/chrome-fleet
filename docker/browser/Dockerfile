@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND=noninteractive PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
 RUN test "${TARGETARCH:-amd64}" = amd64 \
  && apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg jq unzip \
-    xvfb openbox x11vnc novnc websockify tigervnc-tools x11-utils dbus dbus-x11 \
+    xvfb openbox x11vnc novnc websockify tigervnc-tools x11-utils imagemagick dbus dbus-x11 \
     gnome-keyring libsecret-tools libglib2.0-bin python3 fonts-noto-cjk fonts-liberation \
     libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcups2 libdbus-1-3 \
     libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 libx11-6 libxcb1 libxcomposite1 \

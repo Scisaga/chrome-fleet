@@ -31,6 +31,10 @@ import BrowserModeSettings from "./BrowserModeSettings";
 import VncGoogleBindingPanel from "./VncGoogleBindingPanel";
 import ResourceMetrics from "./ResourceMetrics";
 import HostResourceMetrics from "./HostResourceMetrics";
+import DesktopPreview from "./DesktopPreview";
+import DesktopWorkspace from "./DesktopWorkspace";
+import { desktopFramePreviews } from "./desktop-frame-previews";
+import { prepareLoginDesktop } from "./login-desktop";
 import JobTimeline from "./JobTimeline";
 import { jobKind, jobColor, recentJobRange, jobHistoryQuery } from "./job-history";
 import { useJobHistory } from "./use-job-history";
@@ -80,9 +84,8 @@ function bytes(value?: number) {
     ? `${(value / 1024 ** 3).toFixed(1)} GiB`
     : `${(value / 1024 ** 2).toFixed(1)} MiB`;
 }
-interface DesktopSession extends ManualSession {
-  popup: Window | null;
-}
+type DesktopSession = ManualSession;
+type DesktopOptions = { googleLogin?: boolean; accountId?: string; platformId?: string; login?: boolean };
 function Brand() {
   return (
     <div className="brand">
@@ -115,6 +118,12 @@ export default function App() {
   const [createAccountError, setCreateAccountError] = useState("");
   const [createAccountRetry, setCreateAccountRetry] = useState(0);
   const [embeddedSession, setEmbeddedSession] = useState<string>();
+  const [desktopExpanded, setDesktopExpanded] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [focusCard, setFocusCard] = useState<{ id: string; at: number }>();
+  const desktopPopups = useRef(new Map<string, Window>());
+  const desktopOpening = useRef(new Map<string, Promise<void>>());
+  const desktopRevision = useRef(0);
   const [googleLoginTarget, setGoogleLoginTarget] = useState<string>();
   const [googleChecking, setGoogleChecking] = useState<string[]>([]);
   const [toast, setToast] = useState<{ text: string; error?: boolean }>();
@@ -134,7 +143,7 @@ export default function App() {
   useEffect(() => {
     setMobileNav(false);
     setGoogleLoginTarget(undefined);
-    setEmbeddedSession(undefined);
+    setDesktopExpanded(false);
     window.scrollTo(0, 0);
   }, [currentPath]);
   useEffect(() => {
@@ -231,12 +240,17 @@ export default function App() {
       })
       .catch(() => setSession("anonymous"));
     const expired = () => {
+      desktopFramePreviews.clear();
       setCsrfToken("");
       setSession("anonymous");
       setProfiles([]);
       setCreateAccount(undefined);
       setGoogleLoginTarget(undefined);
       setEmbeddedSession(undefined);
+      setDesktopExpanded(false);
+      for (const popup of desktopPopups.current.values()) popup.close();
+      desktopPopups.current.clear();
+      desktopRevision.current++;
       setDesktopSessions([]);
     };
     window.addEventListener("fleet-session-expired", expired);
@@ -245,9 +259,9 @@ export default function App() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      setProfiles(
-        items<Profile>(await api("/profiles?limit=100&includeArchived=true")).filter((profile) => !profile.purgedAt),
-      );
+      const profiles = items<Profile>(await api("/profiles?limit=100&includeArchived=true")).filter((profile) => !profile.purgedAt);
+      desktopFramePreviews.retain(new Set(profiles.filter(profile => !profile.archived).map(profile => profile.id)));
+      setProfiles(profiles);
       setError("");
     } catch (e) {
       setError(message(e));
@@ -267,16 +281,21 @@ export default function App() {
     try {
       for (const s of desktopSessions) {
         await api(`/manual-sessions/${encodeURIComponent(s.id)}`, "DELETE");
-        s.popup?.close();
+        desktopPopups.current.get(s.id)?.close();
       }
       setDesktopSessions([]);
       await api("/session", "DELETE");
+      desktopFramePreviews.clear();
       setCsrfToken("");
       setSession("anonymous");
       setProfiles([]);
       setCreateAccount(undefined);
       setGoogleLoginTarget(undefined);
       setEmbeddedSession(undefined);
+      setDesktopExpanded(false);
+      for (const popup of desktopPopups.current.values()) popup.close();
+      desktopPopups.current.clear();
+      desktopRevision.current++;
     } catch (e) {
       notify(message(e), true);
     }
@@ -285,36 +304,26 @@ export default function App() {
   const [desktopSessions, setDesktopSessions] = useState<DesktopSession[]>([]);
   useEffect(() => {
     const refreshAccounts = () => { void load(true); };
-    const platformDesktop = (event: Event) => {
-      const session = (event as CustomEvent<DesktopSession & { message?: string }>).detail;
-      setDesktopSessions(current => [...current.filter(item => item.profileId !== session.profileId), session]);
-      if (!session.popup) setEmbeddedSession(session.id);
-      notify(session.message || "请在此实例桌面完成登录，再到实例详情人工确认。");
-    };
     window.addEventListener("fleet-account-updated", refreshAccounts);
-    window.addEventListener("fleet-platform-desktop", platformDesktop);
     return () => {
       window.removeEventListener("fleet-account-updated", refreshAccounts);
-      window.removeEventListener("fleet-platform-desktop", platformDesktop);
     };
   }, [load, notify]);
   useEffect(() => {
     if (session !== "authenticated") return;
     let disposed = false;
     const recover = async () => {
+      const revision = desktopRevision.current;
       try {
         const sessions = items<Omit<DesktopSession, "popup">>(
           await api("/manual-sessions?limit=100"),
         ).map((s) => ({ ...s, desktopPath: safeDesktopPath(s.desktopPath) }));
-        if (!disposed)
-          setDesktopSessions((current) =>
-            sessions.map((s) => ({
-              ...s,
-              popup:
-                current.find((existing) => existing.id === s.id)?.popup || null,
-            })),
-          );
-      } catch {
+        if (!disposed && revision === desktopRevision.current) setDesktopSessions(sessions);
+      } catch (error) {
+        if (!disposed && error instanceof ApiError && ["SCOPE_DENIED", "PROFILE_DENIED", "UNAUTHORIZED"].includes(error.code)) {
+          desktopFramePreviews.clear();
+          setDesktopSessions([]);
+        }
         // 只读凭证没有人工接管权限；实例列表仍保持可用。
       }
     };
@@ -331,8 +340,11 @@ export default function App() {
   }, [session]);
   async function closeDesktop(id: string) {
     try {
+      desktopRevision.current++;
       await api(`/manual-sessions/${encodeURIComponent(id)}`, "DELETE");
-      desktopSessions.find((s) => s.id === id)?.popup?.close();
+      desktopRevision.current++;
+      desktopPopups.current.get(id)?.close();
+      desktopPopups.current.delete(id);
       setDesktopSessions((current) => current.filter((s) => s.id !== id));
       notify("人工接管已结束，桌面权限与租约已回收。");
     } catch (e) {
@@ -343,15 +355,52 @@ export default function App() {
     if (!desktopSessions.length) return;
     const timer = setInterval(() => {
       for (const s of desktopSessions) {
-        if (s.popup?.closed || Date.parse(s.expiresAt) <= Date.now())
+        if (Date.parse(s.expiresAt) <= Date.now())
           void closeDesktop(s.id);
       }
     }, 2000);
     return () => clearInterval(timer);
   }, [desktopSessions]);
+  useEffect(() => {
+    if (embeddedSession && !desktopSessions.some(session => session.id === embeddedSession)) {
+      setEmbeddedSession(desktopSessions.at(-1)?.id);
+      if (!desktopSessions.length) setDesktopExpanded(false);
+    }
+  }, [desktopSessions, embeddedSession]);
+  function showDesktop(id: string) {
+    setEmbeddedSession(id); setDesktopExpanded(true); setGoogleLoginTarget(undefined);
+    window.scrollTo(0, 0);
+  }
+  function minimizeDesktop() {
+    const current = desktopSessions.find(session => session.id === embeddedSession);
+    setDesktopExpanded(false);
+    setSidebarCollapsed(false);
+    navigateRoute({ kind: "page", view: "profiles" });
+    if (current) {
+      setFocusCard({ id: current.profileId, at: Date.now() });
+      window.dispatchEvent(new CustomEvent("fleet-preview-refresh", { detail: current.profileId }));
+    }
+  }
+  function openExternal(session: ManualSession) {
+    const existing = desktopPopups.current.get(session.id);
+    if (existing && !existing.closed) { existing.focus(); return; }
+    const popup = window.open(safeDesktopPath(session.desktopPath), "_blank");
+    if (popup) { popup.opener = null; desktopPopups.current.set(session.id, popup); }
+    else notify("浏览器已阻止新窗口，请允许弹出窗口后重试。", true);
+  }
   async function action(profile: Profile, actionName: string) {
     setActionId(`${profile.id}:${actionName}`);
     try {
+      if (["stop", "restart"].includes(actionName)) {
+        const own = desktopSessions.find(session => session.profileId === profile.id);
+        if (own) {
+          desktopRevision.current++;
+          await api(`/manual-sessions/${encodeURIComponent(own.id)}`, "DELETE");
+          desktopRevision.current++;
+          desktopPopups.current.get(own.id)?.close(); desktopPopups.current.delete(own.id);
+          setDesktopSessions(current => current.filter(session => session.id !== own.id));
+        }
+      }
       await api(`/profiles/${profile.id}/${actionName}`, "POST", {});
       notify(
         actionName === "stop"
@@ -393,47 +442,56 @@ export default function App() {
     void openDesktop(profile, { googleLogin: true, accountId });
     setGoogleLoginTarget(undefined);
   }
-  async function openDesktop(
-    profile: Profile,
-    options?: { googleLogin: boolean; accountId?: string },
-  ) {
+  function openDesktop(profile: Profile, options?: DesktopOptions): Promise<void> {
+    const opening = desktopOpening.current.get(profile.id);
+    if (opening) return opening;
+    const operation = performOpenDesktop(profile, options).finally(() => desktopOpening.current.delete(profile.id));
+    desktopOpening.current.set(profile.id, operation);
+    return operation;
+  }
+  async function performOpenDesktop(profile: Profile, options?: DesktopOptions) {
     const existing = desktopSessions.find((s) => s.profileId === profile.id);
-    if (existing?.popup && !existing.popup.closed && !options?.googleLogin) {
-      existing.popup.focus();
+    let opened: ManualSession | undefined;
+    if (existing && Date.parse(existing.expiresAt) > Date.now() && !options?.googleLogin && !options?.platformId && !options?.login) {
+      showDesktop(existing.id);
       return;
-    }
-    const reusePopup =
-      existing?.popup && !existing.popup.closed ? existing.popup : null;
-    const popup = reusePopup || window.open("about:blank", "_blank");
-    if (popup && !reusePopup) {
-      popup.document.title = "正在准备远程桌面";
-      popup.document.body.textContent =
-        "正在启动并准备受保护的远程桌面，请稍候…";
-      popup.opener = null;
     }
     setActionId(`${profile.id}:${options?.googleLogin ? "google" : "desktop"}`);
     try {
+      desktopRevision.current++;
+      if (options?.googleLogin || options?.platformId || options?.login) {
+        notify("正在准备普通 Chrome 登录桌面…");
+        await prepareLoginDesktop(profile.id);
+      }
       const data = await api<ManualSession>(
-        `/profiles/${profile.id}/${options?.googleLogin ? "google-login" : "manual-sessions"}`,
+        `/profiles/${profile.id}/${options?.platformId ? `platforms/${encodeURIComponent(options.platformId)}/login` : options?.googleLogin ? "google-login" : "manual-sessions"}`,
         "POST",
         options?.googleLogin
           ? { accountId: options.accountId }
           : { explicitStart: true },
       );
+      opened = data;
       const path = safeDesktopPath(data.desktopPath);
-      if (popup && (!reusePopup || existing?.id !== data.id))
-        popup.location.replace(path);
-      else popup?.focus();
+      if (options?.googleLogin || options?.platformId || options?.login) {
+        const actual = await api<Profile>(`/profiles/${profile.id}`);
+        if (actual.browserMode !== "vnc" || actual.state !== "running" || actual.health?.browserMode !== "vnc")
+          throw new ApiError("普通 Chrome 尚未就绪，请检查实例状态后重试。", "LOGIN_MODE_UNCONFIRMED");
+      }
+      desktopRevision.current++;
       setDesktopSessions((current) => [
         ...current.filter((s) => s.profileId !== profile.id),
-        { ...data, profileId: profile.id, desktopPath: path, popup },
+        { ...data, profileId: profile.id, desktopPath: path },
       ]);
+      showDesktop(data.id);
       notify(options?.googleLogin
         ? "已打开此实例的登录桌面。请自行访问 Google 登录页，完成登录后点击「确认已登录」。"
         : "人工桌面会话已开始，远程桌面会使用已保存的密码自动连接。");
       await load(true);
     } catch (e) {
-      if (!reusePopup) popup?.close();
+      if (opened && opened.id !== existing?.id) {
+        try { await api(`/manual-sessions/${encodeURIComponent(opened.id)}`, "DELETE"); } catch { /* The server still enforces expiry if cleanup cannot reach it. */ }
+        desktopRevision.current++;
+      }
       notify(message(e), true);
     } finally {
       setActionId("");
@@ -457,7 +515,7 @@ export default function App() {
     navigateRoute({ kind: "page", view: target });
   };
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${desktopExpanded ? "has-expanded-desktop" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {mobileNav && (
         <button
           className="nav-scrim"
@@ -564,7 +622,16 @@ export default function App() {
             自托管
           </div>
         </header>
-        <main className={create ? "create-profile-page" : undefined}>
+        <DesktopWorkspace sessions={desktopSessions} profiles={profiles} activeId={embeddedSession} expanded={desktopExpanded}
+          onSelect={showDesktop} onMinimize={minimizeDesktop} onEnd={id => void closeDesktop(id)} onExternal={openExternal}
+          onCollapseSidebar={() => setSidebarCollapsed(value => !value)}
+          loginProgress={embedded?.googleLogin && <GoogleLoginProgress
+            value={profiles.find(profile => profile.id === embedded.profileId)?.googleBinding ? bindingProgress(profiles.find(profile => profile.id === embedded.profileId)!.googleBinding!) : embedded.googleLogin}
+            mode={embedded.googleLogin.browserMode || browserMode(profiles.find(profile => profile.id === embedded.profileId))}
+            confirmBusy={googleChecking.includes(embedded.profileId)}
+            onConfirm={profiles.find(profile => profile.id === embedded.profileId)?.googleBinding ? () => void confirmGoogleLogin(embedded.profileId, profiles.find(profile => profile.id === embedded.profileId)?.googleBinding?.accountId) : undefined}
+          />} />
+        <main hidden={desktopExpanded} className={create ? "create-profile-page" : undefined}>
           {create &&
             (!createAccount || createAccount.id !== createAccountId ? (
               <section className="create-profile-layout">
@@ -617,46 +684,6 @@ export default function App() {
                 }}
               />
             ))}
-          {desktopSessions.length > 0 && (
-            <section className="desktop-session-panel" aria-label="人工接管信息">
-              {desktopSessions.map((s) => (
-                <div className="desktop-session-banner" key={s.id}>
-                  <Icon name="desktop" />
-                  <div>
-                    <strong>
-                      {profiles.find((p) => p.id === s.profileId)?.name || "浏览器"}{" "}
-                      · 人工接管中
-                    </strong>
-                    <small>{browserMode(profiles.find((profile) => profile.id === s.profileId)) === "vnc" ? "VNC 人工会话" : "自动化已暂停"} · 到期 {date(s.expiresAt)}</small>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      const profile = profiles.find((p) => p.id === s.profileId);
-                      if (profile) void openDesktop(profile);
-                    }}
-                  >
-                    进入桌面
-                    <Icon name="external" size={13} />
-                  </Button>
-                  <Button onClick={() => setEmbeddedSession(s.id)}>内嵌桌面</Button>
-                  <Button onClick={() => void closeDesktop(s.id)}>
-                    结束人工接管
-                  </Button>
-                  {s.googleLogin && (
-                    <div className="google-session-status">
-                      <GoogleLoginProgress
-                        value={profiles.find((profile) => profile.id === s.profileId)?.googleBinding ? bindingProgress(profiles.find((profile) => profile.id === s.profileId)!.googleBinding!) : s.googleLogin}
-                        mode={s.googleLogin.browserMode || browserMode(profiles.find((profile) => profile.id === s.profileId))}
-                        busy={googleChecking.includes(s.profileId)}
-                        confirmBusy={googleChecking.includes(s.profileId)}
-                        onConfirm={profiles.find((profile) => profile.id === s.profileId)?.googleBinding ? () => void confirmGoogleLogin(s.profileId, profiles.find((profile) => profile.id === s.profileId)?.googleBinding?.accountId) : undefined}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </section>
-          )}
           {error && (
             <div className="error-banner" role="alert">
               <Icon name="alert" />
@@ -690,6 +717,7 @@ export default function App() {
                 busy={actionId}
                 onGoogleLogin={(profile) => setGoogleLoginTarget(profile.id)}
                 onGoogleLoginStart={startGoogleLogin}
+                onPlatformLogin={(profile, platformId) => openDesktop(profile, { platformId })}
                 onGoogleConfirm={() => void confirmGoogleLogin(profile.id, profile.googleBinding?.accountId)}
                 googleCheckBusy={googleChecking.includes(profile.id)}
               />
@@ -710,6 +738,8 @@ export default function App() {
             ) : (
               <ProfileList
                 profiles={profiles}
+                desktopSessions={desktopSessions}
+                focusCard={focusCard}
                 loading={loading}
                 onOpenAccounts={() => navigate("accounts")}
                 onSelect={(id, tab = "overview") => navigateRoute({ kind: "profile", profileId: id, tab })}
@@ -723,7 +753,7 @@ export default function App() {
               profiles={profiles}
               notify={notify}
               onOpenProfile={(id) => navigateRoute({ kind: "profile", profileId: id, tab: "accounts" })}
-              onOpenDesktop={(profile) => void openDesktop(profile)}
+              onOpenDesktop={(profile) => void openDesktop(profile, { login: true })}
               onLogin={startGoogleLogin}
               onCreateProfile={openCreate}
               onReloadProfiles={() => load(true)}
@@ -738,7 +768,7 @@ export default function App() {
           {route.kind === "page" && view === "guide" && <Guide />}
           {route.kind === "page" && view === "platforms" && <PlatformsPage />}
         </main>
-        <footer className="page-footer">
+        <footer className="page-footer" hidden={desktopExpanded}>
           <span>CHROME FLEET</span>
           <span>独立浏览器 · 持久化会话 · 自主掌控</span>
           <span>时间显示为 Asia/Shanghai</span>
@@ -750,25 +780,6 @@ export default function App() {
           onClose={() => setGoogleLoginTarget(undefined)}
           onStart={(accountId) => startGoogleLogin(googleTarget, accountId)}
         />
-      )}
-      {embedded && (
-        <Modal
-          title={`${profiles.find((p) => p.id === embedded.profileId)?.name || "浏览器"} · 远程桌面`}
-          subtitle="远程桌面会使用已保存的密码自动连接。关闭此面板会结束人工接管并释放租约。"
-          wide
-          onClose={() => {
-            setEmbeddedSession(undefined);
-            void closeDesktop(embedded.id);
-          }}
-        >
-          <div className="desktop-frame">
-            <iframe
-              title="Chrome 实例远程桌面"
-              src={embedded.desktopPath}
-              referrerPolicy="no-referrer"
-            />
-          </div>
-        </Modal>
       )}
       {toast && (
         <div
@@ -882,6 +893,8 @@ function Login({ onLogin }: { onLogin: () => void }) {
 
 function ProfileList({
   profiles,
+  desktopSessions,
+  focusCard,
   loading,
   onOpenAccounts,
   onSelect,
@@ -890,6 +903,8 @@ function ProfileList({
   busy,
 }: {
   profiles: Profile[];
+  desktopSessions: ManualSession[];
+  focusCard?: { id: string; at: number };
   loading: boolean;
   onOpenAccounts: () => void;
   onSelect: (id: string, tab?: DetailTab) => void;
@@ -900,6 +915,18 @@ function ProfileList({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [archived, setArchived] = useState(false);
+  useEffect(() => {
+    if (!focusCard) return;
+    setSearch(""); setFilter("all"); setArchived(false);
+    const timer = setTimeout(() => {
+      const card = document.getElementById(`profile-card-${focusCard.id}`);
+      document.querySelectorAll(".profile-card.is-desktop-return").forEach(element => element.classList.remove("is-desktop-return"));
+      card?.scrollIntoView({ block: "center", behavior: "smooth" });
+      card?.classList.remove("is-desktop-return");
+      requestAnimationFrame(() => card?.classList.add("is-desktop-return"));
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [focusCard]);
   const active = profiles.filter((p) => !p.archived);
   const running = active.filter((p) => p.state === "running").length;
   const needsHelp = active.filter(
@@ -1014,6 +1041,7 @@ function ProfileList({
               <ProfileCard
                 key={p.id}
                 profile={p}
+                desktopSession={desktopSessions.find(session => session.profileId === p.id)}
                 onSelect={onSelect}
                 action={action}
                 openDesktop={openDesktop}
@@ -1089,20 +1117,19 @@ function Stat({
 }
 function ProfileCard({
   profile: p,
+  desktopSession,
   onSelect,
   action,
   openDesktop,
   busy,
 }: {
   profile: Profile;
+  desktopSession?: ManualSession;
   onSelect: (id: string, tab?: DetailTab) => void;
   action: (p: Profile, a: string) => Promise<void>;
   openDesktop: (p: Profile) => Promise<void>;
   busy: string;
 }) {
-  const pending = Boolean(
-    p.proxy?.enabled && p.proxy.version !== p.proxy.appliedVersion,
-  );
   const locked = busyStates.includes(p.state) || busy.startsWith(`${p.id}:`);
   const primaryAccount =
     p.accounts
@@ -1114,6 +1141,7 @@ function ProfileCard({
       )[0] || p.accounts?.[0];
   return (
     <article
+      id={`profile-card-${p.id}`}
       className={`profile-card ${p.state === "running" ? "is-running" : ""}`}
     >
       <div className="profile-card-head">
@@ -1141,35 +1169,7 @@ function ProfileCard({
         )}
         {p.autoWakePaused && <span className="tag paused">自动唤起已暂停</span>}
       </div>
-      <div className="card-details">
-        <div>
-          <Icon name="box" size={15} />
-          <span>{p.state !== "running" ? "上次 Chrome" : "Chrome"}</span>
-          <strong>{p.chromeVersion || "尚未运行"}</strong>
-        </div>
-        <div>
-          <Icon name="layers" size={15} />
-          <span>启动策略</span>
-          <strong>{policyNames[p.startupPolicy]}</strong>
-        </div>
-        <div>
-          <Icon name="shield" size={15} />
-          <span>网络代理</span>
-          <strong className="proxy-address">
-            {p.proxy?.enabled
-              ? formatProxyAddress(p.proxy)
-              : "直连"}
-            {pending && <i title="保存的代理配置将在受控重启后应用">待生效</i>}
-          </strong>
-        </div>
-        <div>
-          <Icon name="key" size={15} />
-          <span>登录确认</span>
-          <strong>
-            <Badge value={p.googleBinding ? p.googleBinding.confirmationState === "confirmed" ? "manually_confirmed" : "bound_unconfirmed" : "unknown"} label={p.googleBinding ? googleBindingLabel(p.googleBinding) : "账号关联待完善"} />
-          </strong>
-        </div>
-      </div>
+      <DesktopPreview profile={p} session={desktopSession} disabled={locked || Boolean(p.headless) || Boolean(p.archived)} onOpen={() => void openDesktop(p)} />
       <ResourceMetrics profile={p} />
       {p.currentJob && (
         <div className="card-job">
@@ -1551,6 +1551,7 @@ function ProfileDetail({
   busy,
   onGoogleLogin,
   onGoogleLoginStart,
+  onPlatformLogin,
   onGoogleConfirm,
   googleCheckBusy,
 }: {
@@ -1567,6 +1568,7 @@ function ProfileDetail({
   busy: string;
   onGoogleLogin: (profile: Profile) => void;
   onGoogleLoginStart: (profile: Profile, accountId?: string) => void;
+  onPlatformLogin: (profile: Profile, platformId: string) => Promise<void>;
   onGoogleConfirm: () => void;
   googleCheckBusy: boolean;
 }) {
@@ -1842,7 +1844,7 @@ function ProfileDetail({
           onConfirm={onGoogleConfirm} onOpenDesktop={() => void openDesktop(p)}
           busy={locked} confirming={googleCheckBusy}
         />}
-        {tab === "accounts" && <PlatformLinksPanel profile={p} />}
+        {tab === "accounts" && <PlatformLinksPanel profile={p} onOpenLogin={platformId => onPlatformLogin(p, platformId)} />}
         {tab === "tasks" && (
           <JobsPanel profileId={p.id} profiles={[p]} notify={notify} jobId={jobId} onSelectJob={onSelectJob} />
         )}

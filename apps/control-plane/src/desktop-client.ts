@@ -21,12 +21,35 @@ let blocked = !validContext;
 let connecting = false;
 let epoch = 0;
 let activeRequest;
+const embedded = window.parent && window.parent !== window;
+let active = !embedded;
+let currentState = 'connecting';
 const originalConnect = UI.connect;
 const originalDisconnect = UI.disconnect;
 const originalDisconnectFinished = UI.disconnectFinished;
 const originalGetSetting = UI.getSetting;
 
-function state(value) { document.documentElement.dataset.fleetDesktopState = value; }
+function state(value) {
+  currentState = value;
+  document.documentElement.dataset.fleetDesktopState = value;
+  if (embedded) window.parent.postMessage({type:'fleet-desktop-state',profileId:context.profileId,sessionId:context.sessionId,state:value}, window.location.origin);
+}
+function inputState() {
+  if (!UI.rfb) return;
+  UI.rfb.viewOnly = !active;
+  if (!active) UI.rfb.blur();
+}
+window.addEventListener('message', event => {
+  const command = event.data;
+  if (!embedded || event.origin !== window.location.origin || event.source !== window.parent ||
+      command?.type !== 'fleet-desktop-command' || command.profileId !== context.profileId || command.sessionId !== context.sessionId) return;
+  if (command.action === 'activate') {
+    active = command.active === true; inputState();
+    if (!active) document.getElementById('fleet_clipboard_close')?.click();
+  }
+  if (command.action === 'clipboard' && active && currentState === 'connected') document.getElementById('fleet_clipboard_button')?.click();
+  if (command.action === 'reconnect' && active && !closed && !blocked) UI.connect();
+});
 function inhibitReconnect() {
   UI.inhibitReconnect = true;
   UI.reconnectPassword = null;
@@ -84,8 +107,10 @@ async function credentials(signal) {
 function attach(rfb) {
   if (!rfb || attached.has(rfb)) return;
   attached.add(rfb);
+  inputState();
   rfb.addEventListener('connect', () => {
     inhibitReconnect();
+    inputState();
     if (!closed && !blocked) state('connected');
   });
   rfb.addEventListener('securityfailure', () => {

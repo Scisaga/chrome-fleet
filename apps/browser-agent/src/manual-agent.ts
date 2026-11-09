@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { AgentError, FenceGate } from './model.js';
 import { NativeBrowser } from './native-browser.js';
 import { X11Clipboard, validClipboardText } from './x11-clipboard.js';
+import { installDesktopPreview, type X11Preview } from './desktop-preview.js';
 
 const exec=promisify(execFile);
 const TokenBody=z.object({fencingToken:z.number().int().positive()});
@@ -19,6 +20,7 @@ interface ManualAgentOptions {
   closeProxy:()=>Promise<void>;
   clipboard?:Pick<X11Clipboard,'read'|'write'>;
   reloadVnc?:()=>Promise<void>;
+  preview?:X11Preview;
 }
 
 /** VNC mode intentionally has no BrowserContext, Page, CDP or DOM capability. */
@@ -43,6 +45,7 @@ export function createManualAgent(options:ManualAgentOptions) {
       message:known?error.message:validation?'请求参数不符合接口约定':'人工浏览器操作失败，请检查实例状态',
     });
   });
+  const previewAvailable=installDesktopPreview(app,()=>!stopped&&options.browser.running,options.preview);
   app.get('/health',async()=>{
     const healthy=!stopped&&options.browser.running,desktopReady=await options.desktopReady();
     let windowReady=false;
@@ -50,7 +53,7 @@ export function createManualAgent(options:ManualAgentOptions) {
     return{browserMode:'vnc',automationAvailable:false,healthy,ready:healthy&&windowReady&&desktopReady,desktopReady,
       chromeVersion:options.browser.version,playwrightVersion:options.playwrightVersion,keyring:await options.keyringHealth(),
       sandboxEnabled:true,headless:false,proxyVersion:options.proxyVersion,fencingToken:gate.token,busy:gate.busy,
-      pages:0,activeDownloads:null,downloadTrackingAvailable:false};
+      pages:0,activeDownloads:null,downloadTrackingAvailable:false,desktopPreviewAvailable:previewAvailable()};
   });
   app.post('/fence',async req=>{
     const {token}=z.object({token:z.number().int().positive()}).strict().parse(req.body);await gate.advance(token);

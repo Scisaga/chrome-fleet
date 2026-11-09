@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { fixedNow as now, documentationJobs, filterDocumentationJobs, documentationDensity } from "./readme-screenshot-data.mjs";
 import { localizeDocumentationPreview } from "./readme-screenshot-locales.mjs";
+import { documentationDesktopHtml, documentationVncHtml } from "./readme-desktop-fixture.mjs";
 
 // Render the actual built UI with synthetic, read-only fixtures. Never reads a
 // production database, Vault, credentials, browser session, or platform token.
@@ -44,17 +45,23 @@ const accounts = locale => emails.map((email, i) => ({
 const profiles = (locale = "zh-CN") => profileNames[locale].map((name, i) => ({
   id: pid(i + 1), name, tags: profileTags[locale][i],
   state: i === 2 ? "stopped" : "running", desiredState: i === 2 ? "stopped" : "running",
-  browserMode: i === 1 ? "vnc" : "automation", startupPolicy: "on_demand", idleTimeoutMinutes: 15, headless: false,
+  browserMode: i === 1 || i === 3 ? "vnc" : "automation", startupPolicy: "on_demand", idleTimeoutMinutes: 15, headless: false,
   chromeVersion: "155.0.8059.79", playwrightVersion: "1.64.1", image: "chrome-fleet/browser:demo",
   imageDigest: `sha256:${"a".repeat(64)}`, createdAt: "2026-10-15T01:00:00.000Z", lastActivityAt: now,
   resources: { cpus: 2, memoryMb: 2048, pidsLimit: 512 },
   proxy: { enabled: true, scheme: "http", host: "proxy.example.test", port: 8080, bypass: "localhost,127.0.0.1", version: 2, appliedVersion: 2, hasCredentials: false },
   remoteDesktop: { passwordConfigured: true, version: 1, appliedVersion: 1 },
-  health: { ready: true, sandboxEnabled: true, keyring: { unlocked: true, probeVerified: true } },
+  health: { ready: true, desktopPreviewAvailable: true, sandboxEnabled: true, keyring: { unlocked: true, probeVerified: true } },
   metrics: { available: true, sampledAt: now, cpuPercent: [1.8, 0.6, 0, 2.4][i], memoryBytes: [608, 324, 0, 416][i] * 1024 ** 2, memoryLimitBytes: 2 * 1024 ** 3, pids: 34, diskBytes: 1024 ** 3 },
   accounts: i < 3 ? [{ id: `account_demo_${i + 1}`, provider: "google", alias: emails[i], expectedIdentity: emails[i], authState: i === 1 ? "unknown" : "manually_confirmed", boundAt: "2026-10-15T01:00:00.000Z", ...(i !== 1 ? { lastConfirmedAt: "2026-10-17T09:35:00.000Z" } : {}) }] : [],
   ...(i < 3 ? { googleBinding: { accountId: accounts(locale)[i].id, email: emails[i], confirmationState: i === 1 ? "unconfirmed" : "confirmed", ...(i !== 1 ? { lastConfirmedAt: "2026-10-17T09:35:00.000Z" } : {}) } } : {}),
 }));
+const manualSessions = [2, 4].map(n => ({
+  id: `manual_00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+  profileId: pid(n), desktopPath: `/profiles/${pid(n)}/desktop`,
+  expiresAt: new Date(Date.parse(now) + 15 * 60_000).toISOString(),
+}));
+const desktops = new Map(), previews = new Map();
 const jobs = documentationJobs(pid);
 const versions = [
   { id: "version_demo_stable", version: "155.0.8059.79", chromeVersion: "155.0.8059.79", distribution: "google", validated: true, prepared: true },
@@ -68,7 +75,7 @@ function fixture(url, locale) {
   if (path === "/host-metrics") return { scope: "host", available: true, sampledAt: now, cpuPercent: 23.4, cpuCount: 8, memoryBytes: 10.5 * 1024 ** 3, memoryTotalBytes: 32 * 1024 ** 3, memoryPercent: 32.8125 };
   if (path === "/profiles") return { items: profiles(locale), total: 4 };
   if (path === "/google-accounts") return { items: accounts(locale), total: emails.length };
-  if (path === "/manual-sessions") return { items: [], total: 0 };
+  if (path === "/manual-sessions") return { items: manualSessions, total: manualSessions.length };
   if (path === "/browser-versions") return { items: versions, total: versions.length };
   if (path === "/update-policy") return { mode: "auto", paused: false, checkIntervalHours: 24, maintenanceStart: "02:00", maintenanceEnd: "05:00" };
   if (path === "/updates") return { items: [], total: 0 };
@@ -96,6 +103,21 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     if (req.method !== "GET") { rejected.push("WRITE_REQUEST"); return json(res, 405, { code: "READ_ONLY_DOCUMENTATION_FIXTURE" }); }
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) { rejected.push("MCP_EXECUTION"); return json(res, 405, { code: "NO_MCP_EXECUTION" }); }
+    const locale = req.headers["accept-language"]?.startsWith("en") ? "en" : "zh-CN";
+    const preview = url.pathname.match(/^\/profiles\/(cf_[a-f0-9-]+)\/desktop\/preview$/);
+    if (preview) {
+      const bytes = previews.get(`${locale}/${preview[1]}`); assert.ok(bytes, "Only pre-rendered synthetic previews may be served");
+      res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store", "X-Fleet-Preview-Sampled-At": preview[1] === pid(3) ? new Date(Date.parse(now) - 20 * 60_000).toISOString() : now }); return res.end(bytes);
+    }
+    const desktopImage = url.pathname.match(/^\/_documentation\/desktops\/(zh-CN|en)\/(cf_[a-f0-9-]+)\.png$/);
+    if (desktopImage) { const bytes = desktops.get(`${desktopImage[1]}/${desktopImage[2]}`); assert.ok(bytes); res.writeHead(200, { "Content-Type": "image/png" }); return res.end(bytes); }
+    const desktop = url.pathname.match(/^\/profiles\/(cf_[a-f0-9-]+)\/desktop$/);
+    if (desktop) {
+      const profile = profiles(locale).find(profile => profile.id === desktop[1]);
+      const session = manualSessions.find(session => session.profileId === desktop[1]);
+      assert.ok(profile && session, "Only already-open synthetic desktops may be displayed");
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(documentationVncHtml(profile, session, locale));
+    }
     if (url.pathname.startsWith("/api/v1/")) {
       counts.set(url.pathname, (counts.get(url.pathname) || 0) + 1);
       const data = fixture(url, req.headers["accept-language"]?.startsWith("en") ? "en" : "zh-CN");
@@ -116,6 +138,19 @@ try {
   await mkdir(join(outputRoot, "en"), { recursive: true });
   await mkdir(dirname(reportPath), { recursive: true });
   browser = await chromium.launch({ executablePath, headless: true });
+  const fixtureContext = await browser.newContext({ deviceScaleFactor: 1, reducedMotion: "reduce" });
+  await fixtureContext.route("**/*", route => { rejected.push("DESKTOP_FIXTURE_NETWORK_REQUEST"); return route.abort(); });
+  const fixturePage = await fixtureContext.newPage();
+  for (const locale of ["zh-CN", "en"]) for (const profile of profiles(locale)) {
+    await fixturePage.setViewportSize({ width: 1440, height: 900 });
+    await fixturePage.setContent(documentationDesktopHtml(profile, locale));
+    await fixturePage.evaluate(() => document.fonts.ready);
+    desktops.set(`${locale}/${profile.id}`, await fixturePage.screenshot({ animations: "disabled" }));
+    await fixturePage.setViewportSize({ width: 640, height: 400 });
+    await fixturePage.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    previews.set(`${locale}/${profile.id}`, await fixturePage.screenshot({ animations: "disabled" }));
+  }
+  await fixtureContext.close();
   const errors = [], results = [], untranslated = [];
   for (const locale of ["zh-CN", "en"]) {
     const context = await browser.newContext({ locale: locale === "en" ? "en-GB" : "zh-CN", timezoneId: "Asia/Shanghai", reducedMotion: "reduce", deviceScaleFactor: 1 });
@@ -142,9 +177,10 @@ try {
     await cdp.send("CSS.enable");
     page.on("pageerror", error => errors.push(error.message));
     const scenes = [
-      { name: "browser-workspace", path: "/profiles", ready: ".host-metrics[data-host-metrics-state='live']", width: 1600, height: 960 },
+      { name: "browser-workspace", path: "/profiles", ready: ".desktop-preview[data-preview-state='live'] img", width: 1600, height: 1080 },
+      { name: "desktop-workspace", path: "/profiles", ready: ".desktop-preview img", desktop: true, titleSelector: ".desktop-workspace__tabs button[aria-selected='true'] > span", width: 1600, height: 1080 },
       { name: "account-directory", path: "/accounts", ready: ".account-manager-row", width: 1440, height: 1020 },
-      { name: "account-login", path: `/profiles/${pid(2)}/accounts`, ready: ".vnc-google-binding-panel", width: 1440, height: 980 },
+      { name: "account-login", path: `/profiles/${pid(2)}/accounts`, ready: ".vnc-google-binding-panel", width: 1440, height: 1200 },
       { name: "instance-settings", path: `/profiles/${pid(1)}/settings`, ready: ".settings-layout", width: 1440, height: 1080 },
       { name: "task-center", path: "/jobs", ready: "tbody tr", width: 1440, height: 1080 },
       { name: "mcp-integration", path: "/integrations/mcp", ready: ".mcp-page [data-mcp-tool]", width: 1440, height: 1080 },
@@ -154,6 +190,16 @@ try {
       await page.setViewportSize({ width: scene.width, height: scene.height });
       await page.goto(origin + scene.path, { waitUntil: "networkidle" });
       await page.locator(scene.ready).first().waitFor();
+      if (scene.name === "browser-workspace") {
+        await page.waitForFunction(() => document.querySelectorAll(".desktop-preview img").length === 4);
+        await page.locator(".desktop-preview img").evaluateAll(images => Promise.all(images.map(image => image.decode())));
+      }
+      if (scene.desktop) {
+        await page.getByRole("tab", { name: profileNames[locale][1], exact: true }).click();
+        await page.locator(".desktop-workspace__status").filter({ hasText: "已连接" }).waitFor();
+        const frame = page.frameLocator(".desktop-workspace iframe:not([hidden])");
+        await frame.locator("img").evaluate(image => image.decode());
+      }
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(150);
       if (locale === "en") {
@@ -161,7 +207,7 @@ try {
         if (strings.length) untranslated.push({ scene: scene.name, strings });
       }
       const document = await cdp.send("DOM.getDocument");
-      const title = await cdp.send("DOM.querySelector", { nodeId: document.root.nodeId, selector: "h1" });
+      const title = await cdp.send("DOM.querySelector", { nodeId: document.root.nodeId, selector: scene.titleSelector || "h1" });
       const titleFonts = await cdp.send("CSS.getPlatformFontsForNode", { nodeId: title.nodeId });
       assert.ok(titleFonts.fonts.some(font => font.glyphCount > 0), "Screenshot titles must have rendered glyphs; install fonts supporting Chinese");
       assert.equal(await page.locator('input[type="password"]').evaluateAll(inputs => inputs.some(input => input.value.length > 0)), false, "Screenshot passwords must remain empty and masked");

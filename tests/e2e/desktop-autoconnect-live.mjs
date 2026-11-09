@@ -1,4 +1,4 @@
-/** Real noVNC on an isolated profile. Optional clipboard checks type only synthetic text. No screenshots. */
+/** Real noVNC on an isolated profile. Clipboard and preview checks use only this fixture; no image artifacts. */
 import { readFileSync, lstatSync, realpathSync, readdirSync, openSync, fstatSync, fchmodSync, fchownSync, closeSync, constants } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { resolve, join } from "node:path";
@@ -83,12 +83,15 @@ async function clipboardChecks(desktopPage, frame, meta) {
       const { default: UI } = await import(location.pathname.slice(0, location.pathname.lastIndexOf("/") + 1) + "app/ui.js");
       const rfb = UI.rfb;
       if (!rfb) throw new Error("OWN_RFB_REQUIRED");
-      rfb.sendKey(0xffe3, "ControlLeft", true);
-      rfb.sendKey(key.charCodeAt(0), "Key" + key.toUpperCase(), true);
-      rfb.sendKey(key.charCodeAt(0), "Key" + key.toUpperCase(), false);
-      rfb.sendKey(0xffe3, "ControlLeft", false);
+      // These are semantic shortcuts, independent of the host keyboard's physical scancode map.
+      rfb.sendKey(0xffe3, undefined, true);
+      await new Promise(resolve => setTimeout(resolve, 40));
+      rfb.sendKey(key.charCodeAt(0), undefined, true);
+      await new Promise(resolve => setTimeout(resolve, 40));
+      rfb.sendKey(key.charCodeAt(0), undefined, false);
+      rfb.sendKey(0xffe3, undefined, false);
     }, letter);
-    await pause(250);
+    await pause(1000);
   };
   await remoteShortcut("l");
   await remoteShortcut("v");
@@ -342,6 +345,7 @@ try {
   requireTrue(record(desktopPage).credentials >= 1 && !record(desktopPage).latestSocket?.isClosed(), "FULL_RFB_AUTHENTICATION_REQUIRED");
   console.log("PASS: 独立短期凭证与合成实例，noVNC无密码交互完成真实RFB连接");
 
+
   stage = "refresh_autoconnect";
   const beforeRefresh = record(desktopPage).credentials;
   await desktopPage.reload();
@@ -358,8 +362,9 @@ try {
   console.log("PASS: 刷新和显式断开后重新连接均自动认证，URL/HTML/storage无密码且未调用manage reveal");
 
   stage = "embedded_autoconnect";
+  await appPage.bringToFront();
   await appPage.reload();
-  await appPage.locator(".desktop-session-banner").getByRole("button", { name: "内嵌桌面", exact: true }).click();
+  await appPage.getByRole("tab", { name: fixtureName, exact: true }).click();
   const iframe = appPage.locator('iframe[title="Chrome 实例远程桌面"]');
   await iframe.waitFor();
   const frame = await (await iframe.elementHandle()).contentFrame();
@@ -368,6 +373,29 @@ try {
   requireTrue(frameMeta.sessionId === session.id && frameMeta.version === initialMeta.version, "EMBEDDED_CONTEXT_MISMATCH");
   await connected(frame);
   console.log("PASS: 管理页面的同源内嵌桌面使用同一人工会话自动认证");
+
+  stage = "workspace_minimize_preview";
+  const workspace = appPage.getByRole("region", { name: "远程桌面工作区" });
+  await workspace.getByRole("button", { name: "剪贴板", exact: true }).click();
+  await frame.locator("#fleet_clipboard_panel").waitFor({ state: "visible" });
+  await frame.locator("#fleet_clipboard_close").click();
+  await workspace.getByRole("button", { name: "缩回卡片", exact: true }).click();
+  const ownSessions = await api("GET", `/manual-sessions?profileId=${profileId}`);
+  requireTrue(ownSessions.items.some(item => item.id === session.id), "MINIMIZE_RELEASED_LEASE");
+  const preview = await context.request.get(`${base}/profiles/${profileId}/desktop/preview`);
+  requireTrue(preview.ok() && preview.headers()["content-type"] === "image/png", "OWN_PREVIEW_UNAVAILABLE");
+  const pixels = await preview.body();
+  requireTrue(pixels.length >= 24 && pixels.length <= 1048576 && pixels.readUInt32BE(16) <= 640 && pixels.readUInt32BE(20) <= 400 && Boolean(preview.headers()["x-fleet-preview-sampled-at"]), "OWN_PREVIEW_INVALID");
+  await preview.dispose();
+  const inactive = () => frame.evaluate(async () => {
+    const { default: UI } = await import(location.pathname.slice(0, location.pathname.lastIndexOf("/") + 1) + "app/ui.js");
+    return UI.rfb?.viewOnly === true;
+  });
+  await waitUntil(inactive, "HIDDEN_FRAME_ACCEPTS_INPUT");
+  await workspace.getByRole("tab", { name: fixtureName, exact: true }).click();
+  await connected(frame);
+  await waitUntil(async () => !(await inactive()), "RESTORED_FRAME_INPUT_DISABLED");
+  console.log("PASS: 页内工具栏打开剪贴板，缩回保留原租约并禁用隐藏输入，真实桌面PNG预览及页签恢复通过");
 
   if (testClipboard) {
     stage = "clipboard_unicode_roundtrip";

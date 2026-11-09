@@ -43,13 +43,13 @@ Account records, browser user directories and backups stay on your server. Open 
 | Manage platforms linked to Google | Configure platform URLs, record an account ID and nickname in instance details, and confirm login manually; the account directory shows the same records |
 | Connect an AI client | A Skill that guides deployment or reuses an existing service, and registers MCP for Codex / Claude Code |
 | Let AI use a specific account | MCP tools select an instance to navigate, click, fill forms, extract text, take screenshots and run multi-step tasks |
-| Take over a browser at any time | Remote desktops in a new window or embedded view, with active sessions grouped in one panel with thin dividers and bidirectional UTF-8 clipboard support |
+| Take over a browser at any time | Desktop previews on cards, in-page desktop tabs and fullscreen; minimizing preserves takeover sessions, with optional new windows and bidirectional UTF-8 clipboard support |
 | Monitor activity and resource use | Host and per-instance CPU and memory metrics, task progress, results and history |
 | Preserve and restore sessions | Encrypted session exports, full snapshots taken while stopped, backups before upgrades, and rollback using paired images and snapshots |
 
-[![Browser workspace: host resources, instance status, account confirmation and desktop access](docs/images/screenshots/en/browser-workspace.png)](docs/images/screenshots/en/browser-workspace.png)
+[![Browser workspace: desktop previews, host resources, instance status and manual sessions](docs/images/screenshots/en/browser-workspace.png)](docs/images/screenshots/en/browser-workspace.png)
 
-*The workspace shows host resources in the upper-right corner. Each card displays its Chrome instance's status, resource use and desktop controls.*
+*Cards show the latest desktop frame, sample time and resource use. Open desktops remain accessible from the tabs above the workspace.*
 
 ### Ask your agent to install it
 
@@ -79,7 +79,15 @@ See [Install the Chrome Fleet Skill](#install-the-chrome-fleet-skill) for comman
 
 ## Screenshots
 
-These English documentation previews use the actual frontend with localized demo labels and synthetic data. The deployed dashboard currently uses Chinese. Passwords remain masked. Click an image to view it at full size.
+These English documentation previews use the actual frontend with localized demo labels and synthetic data, including the desktop contents. The deployed dashboard currently uses Chinese. Passwords remain masked. Click an image to view it at full size.
+
+### In-page desktops and card previews
+
+Choose **Desktop** on a card to expand Chrome inside the current page. Switch open desktops with the tabs and use the toolbar for the clipboard, fullscreen or **Back to cards**. Minimizing or navigating to another management page preserves manual control until you end it or the session expires. The three most recently used desktops keep their connections; other tabs reconnect when selected.
+
+[![In-page desktop workspace: desktop tabs, connection status, session countdown, clipboard and minimize controls](docs/images/screenshots/en/desktop-workspace.png)](docs/images/screenshots/en/desktop-workspace.png)
+
+New browser images sample visible running cards every five seconds. Stopped instances retain the last frame and its sample time. With an older image, open its desktop first: the page creates previews from an existing, authorized VNC connection and can restore it in read-only mode after a refresh. The session keeps its original expiry time. Previews stay in memory. See [Manual sessions and desktop previews](docs/session-recovery.md#人工接管信息) for details.
 
 ### Account management
 

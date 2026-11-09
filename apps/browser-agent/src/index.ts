@@ -14,6 +14,7 @@ import { X11Clipboard, validClipboardText } from './x11-clipboard.js';
 import { NativeBrowser } from './native-browser.js';
 import { createManualAgent } from './manual-agent.js';
 import { startVncProxy } from './vnc-proxy.js';
+import { installDesktopPreview } from './desktop-preview.js';
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -141,7 +142,8 @@ export async function startAgent() {
     if(provided.length!==expected.length || !timingSafeEqual(provided,expected)) return reply.code(401).send({code:'UNAUTHORIZED',message:'Agent 身份验证失败'});
   });
   app.setErrorHandler((error,_req,reply)=>reply.code(error instanceof AgentError?error.statusCode:error instanceof z.ZodError?400:500).send(safeError(error)));
-  app.get('/health',async()=>{const desktopReady=await portReady(6080)&&await portReady(5900);return{browserMode:'automation',automationAvailable:true,healthy:!closed,ready:!closed&&desktopReady,desktopReady,chromeVersion:context.browser()?.version()??'unknown',playwrightVersion,keyring:await keyringHealth(),sandboxEnabled:true,headless:config.headless,proxyVersion:config.proxyVersion,fencingToken:gate.token,busy:gate.busy,activeDownloads,pages:context.pages().length};});
+  const previewAvailable=installDesktopPreview(app,()=>!closed&&!config.headless);
+  app.get('/health',async()=>{const desktopReady=await portReady(6080)&&await portReady(5900);return{browserMode:'automation',automationAvailable:true,healthy:!closed,ready:!closed&&desktopReady,desktopReady,desktopPreviewAvailable:previewAvailable(),chromeVersion:context.browser()?.version()??'unknown',playwrightVersion,keyring:await keyringHealth(),sandboxEnabled:true,headless:config.headless,proxyVersion:config.proxyVersion,fencingToken:gate.token,busy:gate.busy,activeDownloads,pages:context.pages().length};});
   app.post('/fence',async req=>{const {token}=z.object({token:z.number().int().positive()}).strict().parse(req.body);await gate.advance(token);if(closed)throw new AgentError('FENCE_RESTART_REQUIRED','旧租约操作已终止，需要受控重启浏览器后接管',409);return{fencingToken:gate.token};});
   app.post('/self-test',async req=>{
     const body=TokenBody.extend({mode:z.enum(['write','read']),proof:z.string().min(32).max(100)}).strict().parse(req.body);
